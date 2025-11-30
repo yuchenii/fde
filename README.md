@@ -47,7 +47,7 @@ iwr -useb https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.ps
 
 ```bash
 # Start server (foreground)
-deploy-server -s -c server.yaml
+fde-server -s -c server.yaml
 
 # Start in daemon mode (Unix/Linux/macOS only)
 fde-server -s -d -c server.yaml
@@ -88,7 +88,7 @@ environments:
 ### Client (deploy.yaml)
 
 ```yaml
-defaultEnv: "test"
+token: "shared-secret"
 
 environments:
   prod:

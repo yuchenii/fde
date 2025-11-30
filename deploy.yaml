@@ -24,7 +24,7 @@ environments:
     buildCommand: "echo 'Build test'"
     exclude: ["node_modules", ".git"]
 
-  frontend:test:
+  frontend-test:
     serverUrl: "http://localhost:3000"
     # authToken not specified, will use outer-level token "shared-secret-token"
     localPath: "./README.md"

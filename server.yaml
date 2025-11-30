@@ -34,7 +34,7 @@ environments:
     deployPath: "./deploy-test/test"
     deployCommand: "echo 'test deployed'"
 
-  frontend:test:
+  frontend-test:
     # token not specified, will use outer-level token "shared-secret-token"
     deployPath: "./deploy-test/test"
     deployCommand: "echo 'test deployed'"
