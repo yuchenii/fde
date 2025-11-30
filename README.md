@@ -1,0 +1,201 @@
+# FDE
+
+A lightweight, cross-platform deployment system built with Bun and TypeScript.
+
+[![Build](https://img.shields.io/github/actions/workflow/status/yuchenii/fde/build.yml)](https://github.com/yuchenii/fde/actions)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## ✨ Features
+
+- 🚀 **Fast & Lightweight** - Single binary, no dependencies
+- 🌍 **Cross-Platform** - macOS, Linux, Windows (ARM64 & x64)
+- 📦 **Multiple Upload Modes** - FormData, Streaming with real-time progress
+- 🔒 **Secure** - Token authentication, SHA256 checksum verification
+- 📊 **Real-time Progress** - Beautiful progress bars during upload
+- 🔄 **Hot Reload** - Development mode with auto-restart
+- 🛡️ **Type-Safe** - Written in TypeScript
+- 📝 **Configurable Logging** - Auto-rotating logs with size limits
+- 🔧 **Daemon Mode** - Background process on Unix/Linux/macOS
+
+## 📦 Supported Platforms
+
+| Platform | ARM64 | x64 |
+| -------- | ----- | --- |
+| macOS    | ✅    | ✅  |
+| Linux    | ✅    | ✅  |
+| Windows  | ❌    | ✅  |
+
+## 🚀 Quick Start
+
+### Installation
+
+#### macOS / Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.sh | bash
+```
+
+#### Windows (PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.ps1 | iex
+```
+
+### Usage
+
+#### Server
+
+```bash
+# Start server (foreground)
+deploy-server -s -c server.yaml
+
+# Start in daemon mode (Unix/Linux/macOS only)
+fde-server -s -d -c server.yaml
+
+# Stop daemon
+./scripts/stop-server.sh  # or stop-server.ps1 on Windows
+```
+
+#### Client
+
+```bash
+# Deploy to production
+fde-client -s -e prod
+
+# Deploy with custom config
+fde-client -s -e test -c custom-deploy.yaml
+```
+
+## ⚙️ Configuration
+
+### Server Config (server.yaml)
+
+```yaml
+port: 3000
+token: "shared-secret"
+log:
+  path: "./fde-server.log"
+  maxSize: 10 # MB
+  maxBackups: 5
+
+environments:
+  prod:
+    token: "your-secret-token"
+    deployPath: "/var/www/html"
+    deployCommand: "nginx -s reload"
+```
+
+### Client (deploy.yaml)
+
+```yaml
+defaultEnv: "test"
+
+environments:
+  prod:
+    serverUrl: "http://your-server.com:3000"
+    authToken: "your-secret-token"
+    localPath: "./dist"
+    buildCommand: "npm run build"
+    exclude:
+      - "node_modules"
+      - ".git"
+      - "*.log"
+```
+
+## 🔧 Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh/) >= 1.0
+
+### Setup
+
+```bash
+# Install dependencies
+bun install
+
+# Start server with hot reload
+bun run dev:server
+
+# Start client with hot reload
+bun run dev:client
+
+# Run tests
+bun test
+
+# Run tests in watch mode
+bun run test:watch
+```
+
+### Build
+
+```bash
+# Build all platforms
+bun run build:all
+
+# Build specific platform
+bun run build:mac
+bun run build:linux
+bun run build:windows
+
+# Build specific architecture
+bun run build:mac:arm64
+bun run build:linux:x64
+```
+
+## 📝 API Endpoints
+
+| Endpoint         | Method | Description                    |
+| ---------------- | ------ | ------------------------------ |
+| `/ping`          | GET    | Health check                   |
+| `/health`        | GET    | Detailed health status         |
+| `/upload`        | POST   | File upload (FormData)         |
+| `/upload-stream` | POST   | Streaming upload with progress |
+| `/deploy`        | POST   | Execute deployment command     |
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+bun test
+
+# Run with coverage
+bun run test:coverage
+
+# Watch mode
+bun run test:watch
+```
+
+Test coverage includes:
+
+- ✅ Server API endpoints
+- ✅ Authentication & authorization
+- ✅ File upload & streaming
+- ✅ Checksum verification
+- ✅ Log rotation
+- ✅ Archive creation
+- ✅ Config loading
+
+## 📚 Documentation
+
+- [Cross-Platform Guide](CROSS_PLATFORM.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Built with [Bun](https://bun.sh/)
+- Progress bars powered by [cli-progress](https://github.com/npkgz/cli-progress)
+- Archive handling with [archiver](https://github.com/archiverjs/node-archiver)
+
+---
+
+Made with ❤️ by [Yu Chen]

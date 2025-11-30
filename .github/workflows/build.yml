@@ -1,0 +1,105 @@
+name: Build Multi-Platform Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          # macOS builds
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+            bun_target: bun-darwin-arm64
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            bun_target: bun-darwin-x64
+
+          # Linux builds
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            bun_target: bun-linux-arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            bun_target: bun-linux-x64
+
+          # Windows build
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            bun_target: bun-windows-x64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build server
+        run: |
+          bun build --compile --target=${{ matrix.bun_target }} \
+            --outfile=dist/fde-server-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.platform == 'windows' && '.exe' || '' }} \
+            src/server/index.ts
+          bun build --compile \
+            --target=bun-${{ matrix.platform }}-${{ matrix.arch }} \
+            --outfile=dist/fde-client-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.platform == 'windows' && '.exe' || '' }} \
+            src/client/index.ts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: fde-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist/fde-server-${{ matrix.platform }}-${{ matrix.arch }}*
+            dist/fde-client-${{ matrix.platform }}-${{ matrix.arch }}*
+          retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

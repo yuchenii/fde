@@ -1,0 +1,40 @@
+# Server Configuration
+# 服务监听端口
+port: 3000
+
+# Optional: Outer-level token used when environment doesn't specify token
+token: "shared-secret-token"
+
+# 日志配置（可选）
+log:
+  # 日志文件路径（默认: ./fde-server.log）
+  path: "./fde-server.log"
+  # 日志文件最大大小 MB（默认: 10）
+  maxSize: 10
+  # 保留的日志备份数量（默认: 5）
+  maxBackups: 5
+
+# 环境定义
+environments:
+  # 生产环境配置
+  prod:
+    # This token overrides the outer-level token for prod environment
+    # 这里的 Token 必须与客户端的 authToken 一致
+    token: "prod-secret-key-super-secure"
+    # 部署目录
+    deployPath: "./deploy-test/prod"
+    # 部署命令（可以是单行命令或调用脚本）
+    # 单行命令: deployCommand: "nginx -s reload"
+    # 调用脚本: deployCommand: "bash ./scripts/post-deploy.sh production"
+    deployCommand: "echo 'Deployed to production'"
+
+  # 测试环境配置
+  test:
+    # token not specified, will use outer-level token "shared-secret-token"
+    deployPath: "./deploy-test/test"
+    deployCommand: "echo 'test deployed'"
+
+  frontend:test:
+    # token not specified, will use outer-level token "shared-secret-token"
+    deployPath: "./deploy-test/test"
+    deployCommand: "echo 'test deployed'"
