@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                     FDE - 自动安装脚本                       ║${NC}"
+echo -e "${GREEN}║                     FDE - 自动安装脚本                     ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -85,16 +85,18 @@ BASE_URL="https://github.com/$REPO/releases/download/$LATEST_VERSION"
 
 echo "⬇️  Downloading $SERVER_FILE..."
 curl -L -o "$INSTALL_DIR/$SERVER_FILE" "$BASE_URL/$SERVER_FILE" --progress-bar
-chmod +x "$INSTALL_DIR/$SERVER_FILE"
 
 echo "⬇️  Downloading $CLIENT_FILE..."
 curl -L -o "$INSTALL_DIR/$CLIENT_FILE" "$BASE_URL/$CLIENT_FILE" --progress-bar
+
+# 设置可执行权限
+chmod +x "$INSTALL_DIR/$SERVER_FILE"
 chmod +x "$INSTALL_DIR/$CLIENT_FILE"
 
-# 创建符号链接
-echo "🔗 Creating aliases..."
-ln -sf "$INSTALL_DIR/$SERVER_FILE" "$INSTALL_DIR/fde-server"
-ln -sf "$INSTALL_DIR/$CLIENT_FILE" "$INSTALL_DIR/fde-client"
+# 重命名为简短名称
+echo "📋 Installing..."
+mv "$INSTALL_DIR/$SERVER_FILE" "$INSTALL_DIR/fde-server"
+mv "$INSTALL_DIR/$CLIENT_FILE" "$INSTALL_DIR/fde-client"
 
 echo ""
 echo -e "${GREEN}✅ 安装完成！${NC}"

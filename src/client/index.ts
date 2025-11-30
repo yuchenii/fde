@@ -12,6 +12,7 @@ import {
 } from "./services/stream-upload";
 import { triggerDeploy } from "./services/deploy";
 import type { ClientConfig } from "./types";
+import { VERSION } from "../version";
 
 /**
  * 主部署流程
@@ -163,7 +164,7 @@ function showHelp() {
 ║                       FDE Client                           ║
 ╚════════════════════════════════════════════════════════════╝
 
-版本: 1.0.0
+版本: ${VERSION}
 
 用法:
   fde-client -s -e <environment> [选项]
@@ -196,7 +197,7 @@ function showHelp() {
  * 显示版本信息
  */
 function showVersion() {
-  console.log("FDE Client v1.0.0");
+  console.log(`FDE Client v${VERSION}`);
 }
 
 /**

@@ -7,38 +7,33 @@ import {
   handleHealth,
 } from "./routes/handlers";
 import { handleUploadStream } from "./routes/stream-handlers";
+import { VERSION } from "../version";
 
 /**
- * CLI参数解析
+ * 显示帮助信息
  */
-function parseArgs(): {
-  configPath: string;
-  startServer: boolean;
-  daemon: boolean;
-} {
-  const args = process.argv.slice(2);
-  let configPath = "./server.yaml"; // 默认配置文件路径
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "-h" || args[i] === "--help") {
-      console.log(`
+function showHelp() {
+  console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║                    FDE Server                            ║
+║                       FDE Server                           ║
 ╚════════════════════════════════════════════════════════════╝
 
-版本: 1.0.0
+版本: ${VERSION}
 
 用法:
   fde-server -s [选项]
 
 选项:
-  -s                启动服务器 (必需，防止误触)
+  -s                启动服务器 (必需)
+  -d                后台运行 (daemon模式)
   -c <path>         指定配置文件路径 (默认: ./server.yaml)
   -h, --help        显示此帮助信息
+  -v, --version     显示版本信息
 
 示例:
-  fde-server -s                          # 使用默认配置启动
-  fde-server -s -c /etc/deploy.yaml      # 指定配置文件启动
+  fde-server -s                          # 前台启动
+  fde-server -s -d                       # 后台启动
+  fde-server -s -d -c /etc/deploy.yaml   # 后台启动并指定配置
 
 API 端点:
   POST /upload         文件上传接口
@@ -55,6 +50,34 @@ API 端点:
       deployPath: "/var/www/html"
       deployCommand: "nginx -s reload"
 `);
+}
+
+/**
+ * 显示版本信息
+ */
+function showVersion() {
+  console.log(`FDE Server v${VERSION}`);
+}
+
+/**
+ * CLI参数解析
+ */
+function parseArgs(): {
+  configPath: string;
+  startServer: boolean;
+  daemon: boolean;
+} {
+  const args = process.argv.slice(2);
+  let configPath = "./server.yaml"; // 默认配置文件路径
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-h" || args[i] === "--help") {
+      showHelp();
+      process.exit(0);
+    }
+
+    if (args[i] === "-v" || args[i] === "--version") {
+      showVersion();
       process.exit(0);
     }
 
@@ -147,43 +170,7 @@ async function main() {
 
   // 检查是否有 -s 参数
   if (!shouldStart) {
-    // 显示帮助信息
-    console.log(`
-╔════════════════════════════════════════════════════════════╗
-║                    FDE Server                            ║
-╚════════════════════════════════════════════════════════════╝
-
-版本: 1.0.0
-
-用法:
-  fde-server -s [选项]
-
-选项:
-  -s                启动服务器 (必需)
-  -d                后台运行 (daemon模式)
-  -c <path>         指定配置文件路径 (默认: ./server.yaml)
-  -h, --help        显示此帮助信息
-
-示例:
-  fde-server -s                          # 前台启动
-  fde-server -s -d                       # 后台启动
-  fde-server -s -d -c /etc/deploy.yaml   # 后台启动并指定配置
-
-API 端点:
-  POST /upload         文件上传接口
-  POST /upload-stream  流式上传接口 (支持进度)
-  POST /deploy         执行部署命令
-  GET  /ping           连接测试
-  GET  /health         健康检查
-
-配置文件示例:
-  port: 3000
-  environments:
-    prod:
-      token: "your-secret-token"
-      deployPath: "/var/www/html"
-      deployCommand: "nginx -s reload"
-`);
+    showHelp();
     process.exit(0);
   }
 

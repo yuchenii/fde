@@ -50,10 +50,10 @@ Invoke-WebRequest -Uri "$BASE_URL/$SERVER_FILE" -OutFile "$InstallDir\$SERVER_FI
 Write-Host "⬇️  Downloading $CLIENT_FILE..." -ForegroundColor Yellow
 Invoke-WebRequest -Uri "$BASE_URL/$CLIENT_FILE" -OutFile "$InstallDir\$CLIENT_FILE"
 
-# Create symbolic links (shims)
-Write-Host "🔗 Creating aliases..." -ForegroundColor Yellow
-New-Item -ItemType SymbolicLink -Path "$InstallDir\fde-server.exe" -Target "$InstallDir\$SERVER_FILE" -Force | Out-Null
-New-Item -ItemType SymbolicLink -Path "$InstallDir\fde-client.exe" -Target "$InstallDir\$CLIENT_FILE" -Force | Out-Null
+# 重命名为简短名称
+Write-Host "📋 Installing..." -ForegroundColor Yellow
+Rename-Item -Path "$InstallDir\$SERVER_FILE" -NewName "fde-server.exe" -Force
+Rename-Item -Path "$InstallDir\$CLIENT_FILE" -NewName "fde-client.exe" -Force
 
 # Add to PATH if not present
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
