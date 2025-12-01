@@ -188,6 +188,24 @@ bun run build:mac:arm64
 bun run build:linux:x64
 ```
 
+### Release Workflow
+
+#### Commit Changes
+
+Use the interactive commit tool to ensure your commit messages follow the standard convention:
+
+```bash
+bun run commit
+```
+
+#### Release
+
+To create a new release (bump version, generate changelog, create git tag, and release on GitHub):
+
+```bash
+bun run release
+```
+
 ## 📝 API Endpoints
 
 | Endpoint         | Method | Description                    |

@@ -41,7 +41,14 @@
     "build:mac:x64": "bun build --compile --target=bun-darwin-x64 --outfile=dist/fde-server-macos-x64 src/server/index.ts && bun build --compile --target=bun-darwin-x64 --outfile=dist/fde-client-macos-x64 src/client/index.ts",
     "build:linux:arm64": "bun build --compile --target=bun-linux-arm64 --outfile=dist/fde-server-linux-arm64 src/server/index.ts && bun build --compile --target=bun-linux-arm64 --outfile=dist/fde-client-linux-arm64 src/client/index.ts",
     "build:linux:x64": "bun build --compile --target=bun-linux-x64 --outfile=dist/fde-server-linux-x64 src/server/index.ts && bun build --compile --target=bun-linux-x64 --outfile=dist/fde-client-linux-x64 src/client/index.ts",
-    "build:windows:x64": "bun build --compile --target=bun-windows-x64 --outfile=dist/fde-server-windows-x64.exe src/server/index.ts && bun build --compile --target=bun-windows-x64 --outfile=dist/fde-client-windows-x64.exe src/client/index.ts"
+    "build:windows:x64": "bun build --compile --target=bun-windows-x64 --outfile=dist/fde-server-windows-x64.exe src/server/index.ts && bun build --compile --target=bun-windows-x64 --outfile=dist/fde-client-windows-x64.exe src/client/index.ts",
+    "commit": "git-cz",
+    "release": "release-it"
+  },
+  "config": {
+    "commitizen": {
+      "path": "node_modules/cz-git"
+    }
   },
   "dependencies": {
     "archiver": "^7.0.1",
@@ -52,6 +59,9 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
+    "@release-it/conventional-changelog": "^10.0.2",
     "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^6.0.2",
     "@types/bun": "latest",
@@ -59,6 +69,9 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.10.0",
     "adm-zip": "^0.5.16",
+    "commitizen": "^4.3.1",
+    "cz-git": "^1.12.0",
+    "release-it": "^19.0.6",
     "typescript": "^5.3.3"
   },
   "engines": {
