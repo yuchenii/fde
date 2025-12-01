@@ -21,7 +21,8 @@ import { uninstall } from "../utils/self-uninstall";
  */
 async function deploy(
   env: string,
-  envConfig: ClientConfig["environments"][string]
+  envConfig: ClientConfig["environments"][string],
+  skipBuild: boolean = false
 ) {
   console.log(`\n🎯 Starting deployment for environment: ${env}\n`);
 
@@ -46,7 +47,7 @@ async function deploy(
     }
 
     // 3. 执行构建命令
-    if (envConfig.buildCommand) {
+    if (!skipBuild && envConfig.buildCommand) {
       await runBuildCommand(envConfig.buildCommand);
     }
 
@@ -108,10 +109,12 @@ async function parseArgs(): Promise<{
   env: string;
   configPath: string;
   shouldStart: boolean;
+  skipBuild: boolean;
 }> {
   const args = process.argv.slice(2);
   let env = "";
   let configPath = "./deploy.yaml";
+  let skipBuild = false;
 
   // 检查帮助参数
   if (args.includes("-h") || args.includes("--help")) {
@@ -149,6 +152,8 @@ async function parseArgs(): Promise<{
       }
     } else if (arg === "-c") {
       configPath = args[++i];
+    } else if (arg === "--skip-build") {
+      skipBuild = true;
     }
   }
 
@@ -166,7 +171,7 @@ async function parseArgs(): Promise<{
     process.exit(1);
   }
 
-  return { env, configPath, shouldStart };
+  return { env, configPath, shouldStart, skipBuild };
 }
 
 /**
@@ -187,6 +192,7 @@ function showHelp() {
   -s                 启动部署 (必需)
   -e, --env=<name>   指定部署环境 (必需)
   -c <path>          指定配置文件路径 (默认: ./deploy.yaml)
+  --skip-build       跳过构建命令，直接上传文件
   -h, --help         显示此帮助信息
   -v, --version      显示版本信息
   --update           检查更新
@@ -221,7 +227,7 @@ function showVersion() {
  */
 async function main() {
   try {
-    const { env, configPath, shouldStart } = await parseArgs();
+    const { env, configPath, shouldStart, skipBuild } = await parseArgs();
 
     // 检查是否有 -s 参数
     if (!shouldStart) {
@@ -234,9 +240,11 @@ async function main() {
     // 获取环境配置
     const envConfig = config.environments[env];
     if (!envConfig) {
-      console.error(`❌ Unknown environment: ${env}`);
-      console.log(
-        `\n💡 Available environments: ${Object.keys(config.environments).join(
+      console.error(
+        `\n❌ Error: Environment '${env}' not found in config file`
+      );
+      console.error(
+        `   Available environments: ${Object.keys(config.environments).join(
           ", "
         )}`
       );
@@ -244,7 +252,7 @@ async function main() {
     }
 
     // 执行部署
-    await deploy(env, envConfig);
+    await deploy(env, envConfig, skipBuild);
   } catch (error: any) {
     if (error.message && !error.message.includes("Failed to load config")) {
       console.error(`❌ Error:`, error.message);
