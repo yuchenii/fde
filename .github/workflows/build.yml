@@ -55,7 +55,10 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/*
-          body: ${{ steps.changelog.outputs.changelog }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.fromTag }}...${{ steps.changelog.outputs.toTag }}
           draft: false
           prerelease: false
         env:
