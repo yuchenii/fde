@@ -41,12 +41,21 @@ jobs:
           path: dist/*
           retention-days: 7
 
+      - name: Build Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configuration: ".github/changelog-configuration.json"
+          mode: "HYBRID"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: dist/*
-          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.changelog }}
           draft: false
           prerelease: false
         env:
