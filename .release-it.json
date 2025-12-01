@@ -5,7 +5,7 @@
     "requireCleanWorkingDir": true
   },
   "github": {
-    "release": true,
+    "release": false,
     "releaseName": "v${version}",
     "tokenRef": "GITHUB_TOKEN"
   },
