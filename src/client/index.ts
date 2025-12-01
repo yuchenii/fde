@@ -13,6 +13,8 @@ import {
 import { triggerDeploy } from "./services/deploy";
 import type { ClientConfig } from "./types";
 import { VERSION } from "../version";
+import { checkAndUpdate } from "../utils/self-update";
+import { uninstall } from "../utils/self-uninstall";
 
 /**
  * 主部署流程
@@ -123,6 +125,18 @@ async function parseArgs(): Promise<{
     process.exit(0);
   }
 
+  // 检查更新参数
+  if (args.includes("--update")) {
+    await checkAndUpdate();
+    process.exit(0);
+  }
+
+  // 检查卸载参数
+  if (args.includes("--uninstall")) {
+    await uninstall();
+    process.exit(0);
+  }
+
   // 解析参数
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -175,6 +189,8 @@ function showHelp() {
   -c <path>          指定配置文件路径 (默认: ./deploy.yaml)
   -h, --help         显示此帮助信息
   -v, --version      显示版本信息
+  --update           检查更新
+  --uninstall        卸载 FDE
 
 示例:
   fde-client -s -e prod                     # 部署到生产环境

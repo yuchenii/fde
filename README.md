@@ -64,6 +64,14 @@ fde-client -s -e prod
 
 # Deploy with custom config
 fde-client -s -e test -c custom-deploy.yaml
+
+# Show version
+fde-server -v
+fde-client --version
+
+# Show help
+fde-server -h
+fde-client --help
 ```
 
 ## ⚙️ Configuration
@@ -101,6 +109,39 @@ environments:
       - ".git"
       - "*.log"
 ```
+
+### Update
+
+FDE can update itself to the latest version:
+
+```bash
+# Update to latest version
+fde-server --update
+# or
+fde-client --update
+```
+
+The update command will:
+
+- Check GitHub for the latest release
+- Download and install the new version
+- Ask if you want to update the other binary (server/client)
+- Show real-time download progress
+
+### Uninstall
+
+```bash
+# Uninstall FDE
+fde-server --uninstall
+# or
+fde-client --uninstall
+```
+
+The uninstall command will:
+
+- Remove the current binary
+- Scan for other FDE files and ask for confirmation
+- Work regardless of how you renamed the binaries
 
 ## 🔧 Development
 

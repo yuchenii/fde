@@ -8,6 +8,8 @@ import {
 } from "./routes/handlers";
 import { handleUploadStream } from "./routes/stream-handlers";
 import { VERSION } from "../version";
+import { checkAndUpdate } from "../utils/self-update";
+import { uninstall } from "../utils/self-uninstall";
 
 /**
  * 显示帮助信息
@@ -29,6 +31,8 @@ function showHelp() {
   -c <path>         指定配置文件路径 (默认: ./server.yaml)
   -h, --help        显示此帮助信息
   -v, --version     显示版本信息
+  --update          检查更新
+  --uninstall       卸载 FDE
 
 示例:
   fde-server -s                          # 前台启动
@@ -62,11 +66,11 @@ function showVersion() {
 /**
  * CLI参数解析
  */
-function parseArgs(): {
+async function parseArgs(): Promise<{
   configPath: string;
   startServer: boolean;
   daemon: boolean;
-} {
+}> {
   const args = process.argv.slice(2);
   let configPath = "./server.yaml"; // 默认配置文件路径
 
@@ -78,6 +82,16 @@ function parseArgs(): {
 
     if (args[i] === "-v" || args[i] === "--version") {
       showVersion();
+      process.exit(0);
+    }
+
+    if (args[i] === "--update") {
+      await checkAndUpdate();
+      process.exit(0);
+    }
+
+    if (args[i] === "--uninstall") {
+      await uninstall();
       process.exit(0);
     }
 
@@ -166,7 +180,7 @@ export async function startServer(configPath: string) {
  * 主函数入口
  */
 async function main() {
-  const { configPath, startServer: shouldStart, daemon } = parseArgs();
+  const { configPath, startServer: shouldStart, daemon } = await parseArgs();
 
   // 检查是否有 -s 参数
   if (!shouldStart) {
