@@ -5,28 +5,31 @@ token: "shared-secret-token"
 # Environment configurations
 environments:
   prod:
-    # 服务器地址（基础 URL，不需要包含 /deploy 路径）
+    # Server address
     serverUrl: "http://localhost:3000"
     # This token overrides the outer-level token for prod environment
-    # 这里的 Token 必须与 server.yaml 中的 prod.token 一致
+    # Token must match the server.yaml prod.token
     authToken: "prod-secret-key-super-secure"
-    localPath: "./README.md"
-    # 构建命令（可以是单行命令或调用脚本）
-    # 单行命令: buildCommand: "npm run build"
-    # 调用脚本: buildCommand: "bash ./scripts/build-prod.sh"
+    # Build command (can be a single line command or a script call)
+    # Single line command: buildCommand: "pnpm run build"
+    # Script call: buildCommand: "./scripts/build-prod.sh"
     buildCommand: "echo 'Build prod'"
+    # Deployment directory or file
+    localPath: "./scripts"
     exclude: ["node_modules", ".git", "*.log"]
 
   test:
     serverUrl: "http://localhost:3000"
     # authToken not specified, will use outer-level token "shared-secret-token"
-    localPath: "./README.md"
     buildCommand: "echo 'Build test'"
+    # Deployment directory or file
+    localPath: "./README.md"
     exclude: ["node_modules", ".git"]
 
   frontend-test:
     serverUrl: "http://localhost:3000"
     # authToken not specified, will use outer-level token "shared-secret-token"
+    buildCommand: "echo 'Build frontend test'"
+    # Deployment directory or file
     localPath: "./README.md"
-    buildCommand: "echo 'Build test'"
     exclude: ["node_modules", ".git"]

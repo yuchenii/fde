@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { join } from "path";
 import { rm, mkdir, writeFile } from "fs/promises";
 import { createZipArchive } from "../src/client/services/archive";
+import AdmZip from "adm-zip";
 
 describe("Archive Tests", () => {
   const TEST_DIR = join(process.cwd(), "test-archive-temp");
@@ -22,11 +23,22 @@ describe("Archive Tests", () => {
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 
-  it("should create zip archive", async () => {
+  it("should create zip archive with directory structure", async () => {
     await createZipArchive(TEST_FILES_DIR, OUTPUT_ZIP);
 
     const { existsSync } = await import("fs");
     expect(existsSync(OUTPUT_ZIP)).toBe(true);
+
+    // Verify zip content structure using adm-zip (Cross-platform)
+    const zip = new AdmZip(OUTPUT_ZIP);
+    const zipEntries = zip.getEntries();
+    const entryNames = zipEntries.map((entry) => entry.entryName);
+
+    // Should contain files/file1.txt (files is the directory name)
+    // Note: adm-zip entry names usually use forward slashes even on Windows
+    expect(entryNames).toContain("files/file1.txt");
+    expect(entryNames).toContain("files/file2.txt");
+    expect(entryNames).toContain("files/subdir/file3.txt");
   });
 
   it("should exclude files matching patterns", async () => {

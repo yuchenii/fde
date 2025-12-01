@@ -1,11 +1,10 @@
 #!/usr/bin/env bun
-import yaml from "js-yaml";
+import { Command } from "commander";
+import chalk from "chalk";
 import { existsSync } from "fs";
-import { loadConfig } from "./config/loader";
 import { detectPathType } from "./utils/path";
 import { runBuildCommand } from "./services/build";
 import { checkServerConnection } from "./utils/server";
-import { uploadFile, uploadDirectory } from "./services/upload";
 import {
   uploadFileStream,
   uploadDirectoryStream,
@@ -24,16 +23,20 @@ async function deploy(
   envConfig: ClientConfig["environments"][string],
   skipBuild: boolean = false
 ) {
-  console.log(`\n🎯 Starting deployment for environment: ${env}\n`);
+  console.log(chalk.blue(`\n🎯 Starting deployment for environment: ${env}\n`));
 
   try {
     // 1. 验证 authToken 已配置
     if (!envConfig.authToken) {
       console.error(
-        `\n❌ Error: Missing authentication token for environment '${env}'`
+        chalk.red(
+          `\n❌ Error: Missing authentication token for environment '${env}'`
+        )
       );
       console.error(
-        `   Please specify 'authToken' in the environment or 'token' at the outer level.`
+        chalk.yellow(
+          `   Please specify 'authToken' in the environment or 'token' at the outer level.`
+        )
       );
       process.exit(1);
     }
@@ -41,8 +44,10 @@ async function deploy(
     // 2. 检查服务器连接
     const isServerReachable = await checkServerConnection(envConfig.serverUrl);
     if (!isServerReachable) {
-      console.error(`\n💡 Please ensure the server is running and accessible.`);
-      console.error(`   Server URL: ${envConfig.serverUrl}`);
+      console.error(
+        chalk.yellow(`\n💡 Please ensure the server is running and accessible.`)
+      );
+      console.error(chalk.yellow(`   Server URL: ${envConfig.serverUrl}`));
       process.exit(1);
     }
 
@@ -53,17 +58,21 @@ async function deploy(
 
     // 4. 验证本地路径存在
     if (!existsSync(envConfig.localPath)) {
-      console.error(`\n❌ Error: Local path does not exist!`);
-      console.error(`   Path: ${envConfig.localPath}`);
+      console.error(chalk.red(`\n❌ Error: Local path does not exist!`));
+      console.error(chalk.red(`   Path: ${envConfig.localPath}`));
       console.error(
-        `\n💡 Make sure the path is correct or the build command succeeded.`
+        chalk.yellow(
+          `\n💡 Make sure the path is correct or the build command succeeded.`
+        )
       );
       process.exit(1);
     }
 
     // 5. 检测路径类型
     const pathType = await detectPathType(envConfig.localPath);
-    console.log(`\n🔍 Detected path type: ${pathType.toUpperCase()}`);
+    console.log(
+      chalk.gray(`\n🔍 Detected path type: ${pathType.toUpperCase()}`)
+    );
 
     // 6. 根据路径类型选择上传方式（使用流式上传，支持进度条）
     let uploadResult;
@@ -93,172 +102,93 @@ async function deploy(
     const result = await triggerDeploy(envConfig.serverUrl, env);
 
     // 8. 显示结果
-    console.log("\n📊 Deployment Result:");
+    console.log(chalk.blue("\n📊 Deployment Result:"));
     console.log(JSON.stringify(result, null, 2));
-    console.log(`\n🎉 Deployment to '${env}' completed!`);
+    console.log(chalk.green(`\n🎉 Deployment to '${env}' completed!`));
   } catch (error: any) {
-    console.error(`\n💥 Deployment failed:`, error.message);
+    console.error(chalk.red(`\n💥 Deployment failed:`), error.message);
     process.exit(1);
   }
 }
 
 /**
- * CLI参数解析
+ * 主函数入口
  */
-async function parseArgs(): Promise<{
+/**
+ * 处理部署命令
+ */
+async function handleDeployCommand(options: {
   env: string;
-  configPath: string;
-  shouldStart: boolean;
-  skipBuild: boolean;
-}> {
-  const args = process.argv.slice(2);
-  let env = "";
-  let configPath = "./deploy.yaml";
-  let skipBuild = false;
+  config: string;
+  skipBuild?: boolean;
+}) {
+  try {
+    // 加载配置
+    const { loadConfig } = await import("./config/loader");
+    const config = await loadConfig(options.config);
 
-  // 检查帮助参数
-  if (args.includes("-h") || args.includes("--help")) {
-    showHelp();
-    process.exit(0);
-  }
-
-  // 检查版本参数
-  if (args.includes("-v") || args.includes("--version")) {
-    showVersion();
-    process.exit(0);
-  }
-
-  // 检查更新参数
-  if (args.includes("--update")) {
-    await checkAndUpdate();
-    process.exit(0);
-  }
-
-  // 检查卸载参数
-  if (args.includes("--uninstall")) {
-    await uninstall();
-    process.exit(0);
-  }
-
-  // 解析参数
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg === "-e" || arg.startsWith("--env=")) {
-      if (arg === "-e") {
-        env = args[++i];
-      } else {
-        env = arg.split("=")[1];
-      }
-    } else if (arg === "-c") {
-      configPath = args[++i];
-    } else if (arg === "--skip-build") {
-      skipBuild = true;
+    // 获取环境配置
+    const envConfig = config.environments[options.env];
+    if (!envConfig) {
+      console.error(
+        chalk.red(
+          `\n❌ Error: Environment '${options.env}' not found in config file`
+        )
+      );
+      console.error(
+        chalk.gray(
+          `   Available environments: ${Object.keys(config.environments).join(
+            ", "
+          )}`
+        )
+      );
+      process.exit(1);
     }
-  }
 
-  const shouldStart = args.includes("-s");
-
-  // 如果没有 -s 参数，显示帮助信息
-  if (!shouldStart) {
-    showHelp();
-    process.exit(0);
-  }
-
-  if (!env) {
-    console.error("\n❌ Error: --env parameter is required");
-    console.log("\n使用 --help 查看帮助信息\n");
+    // 执行部署
+    await deploy(options.env, envConfig, options.skipBuild);
+  } catch (error: any) {
+    if (error.message && !error.message.includes("Failed to load config")) {
+      console.error(chalk.red(`❌ Error:`), error.message);
+    }
     process.exit(1);
   }
-
-  return { env, configPath, shouldStart, skipBuild };
-}
-
-/**
- * 显示帮助信息
- */
-function showHelp() {
-  console.log(`
-╔════════════════════════════════════════════════════════════╗
-║                       FDE Client                           ║
-╚════════════════════════════════════════════════════════════╝
-
-版本: ${VERSION}
-
-用法:
-  fde-client -s -e <environment> [选项]
-
-选项:
-  -s                 启动部署 (必需)
-  -e, --env=<name>   指定部署环境 (必需)
-  -c <path>          指定配置文件路径 (默认: ./deploy.yaml)
-  --skip-build       跳过构建命令，直接上传文件
-  -h, --help         显示此帮助信息
-  -v, --version      显示版本信息
-  --update           检查更新
-  --uninstall        卸载 FDE
-
-示例:
-  fde-client -s -e prod                     # 部署到生产环境
-  fde-client -s --env=test -c config.yaml   # 使用自定义配置
-
-配置文件示例:
-  # Optional: Outer-level token used when environment doesn't specify authToken
-  token: "shared-secret-token"
-  
-  environments:
-    prod:
-      serverUrl: "http://your-server.com"
-      authToken: "your-secret-token"  # Optional, overrides outer token
-      localPath: "./dist"
-      buildCommand: "npm run build"
-`);
-}
-
-/**
- * 显示版本信息
- */
-function showVersion() {
-  console.log(`FDE Client v${VERSION}`);
 }
 
 /**
  * 主函数入口
  */
 async function main() {
-  try {
-    const { env, configPath, shouldStart, skipBuild } = await parseArgs();
+  const program = new Command();
 
-    // 检查是否有 -s 参数
-    if (!shouldStart) {
-      return;
-    }
+  program
+    .name("fde-client")
+    .description("Fast Deploy Engine Client")
+    .version(VERSION);
 
-    // 加载配置
-    const config = await loadConfig(configPath);
+  program
+    .command("deploy")
+    .description("Deploy project")
+    .requiredOption("-e, --env <env>", "Environment name (e.g., prod, test)")
+    .option("-c, --config <path>", "Config file path", "./deploy.yaml")
+    .option("--skip-build", "Skip build command and upload files directly")
+    .action(handleDeployCommand);
 
-    // 获取环境配置
-    const envConfig = config.environments[env];
-    if (!envConfig) {
-      console.error(
-        `\n❌ Error: Environment '${env}' not found in config file`
-      );
-      console.error(
-        `   Available environments: ${Object.keys(config.environments).join(
-          ", "
-        )}`
-      );
-      process.exit(1);
-    }
+  program
+    .command("upgrade")
+    .description("Check for updates")
+    .action(async () => {
+      await checkAndUpdate();
+    });
 
-    // 执行部署
-    await deploy(env, envConfig, skipBuild);
-  } catch (error: any) {
-    if (error.message && !error.message.includes("Failed to load config")) {
-      console.error(`❌ Error:`, error.message);
-    }
-    process.exit(1);
-  }
+  program
+    .command("uninstall")
+    .description("Uninstall FDE")
+    .action(async () => {
+      await uninstall();
+    });
+
+  program.parse(process.argv);
 }
 
 main();

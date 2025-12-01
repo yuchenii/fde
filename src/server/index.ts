@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { Command } from "commander";
+import chalk from "chalk";
 import { loadConfig } from "./config/loader";
 import {
   handleUpload,
@@ -12,112 +14,18 @@ import { checkAndUpdate } from "../utils/self-update";
 import { uninstall } from "../utils/self-uninstall";
 
 /**
- * 显示帮助信息
- */
-function showHelp() {
-  console.log(`
-╔════════════════════════════════════════════════════════════╗
-║                       FDE Server                           ║
-╚════════════════════════════════════════════════════════════╝
-
-版本: ${VERSION}
-
-用法:
-  fde-server -s [选项]
-
-选项:
-  -s                启动服务器 (必需)
-  -d                后台运行 (daemon模式)
-  -c <path>         指定配置文件路径 (默认: ./server.yaml)
-  -h, --help        显示此帮助信息
-  -v, --version     显示版本信息
-  --update          检查更新
-  --uninstall       卸载 FDE
-
-示例:
-  fde-server -s                          # 前台启动
-  fde-server -s -d                       # 后台启动
-  fde-server -s -d -c /etc/deploy.yaml   # 后台启动并指定配置
-
-API 端点:
-  POST /upload         文件上传接口
-  POST /upload-stream  流式上传接口 (支持进度)
-  POST /deploy         执行部署命令
-  GET  /ping           连接测试
-  GET  /health         健康检查
-
-配置文件示例:
-  port: 3000
-  environments:
-    prod:
-      token: "your-secret-token"
-      deployPath: "/var/www/html"
-      deployCommand: "nginx -s reload"
-`);
-}
-
-/**
- * 显示版本信息
- */
-function showVersion() {
-  console.log(`FDE Server v${VERSION}`);
-}
-
-/**
- * CLI参数解析
- */
-async function parseArgs(): Promise<{
-  configPath: string;
-  startServer: boolean;
-  daemon: boolean;
-}> {
-  const args = process.argv.slice(2);
-  let configPath = "./server.yaml"; // 默认配置文件路径
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "-h" || args[i] === "--help") {
-      showHelp();
-      process.exit(0);
-    }
-
-    if (args[i] === "-v" || args[i] === "--version") {
-      showVersion();
-      process.exit(0);
-    }
-
-    if (args[i] === "--update") {
-      await checkAndUpdate();
-      process.exit(0);
-    }
-
-    if (args[i] === "--uninstall") {
-      await uninstall();
-      process.exit(0);
-    }
-
-    if (args[i] === "-c" && i + 1 < args.length) {
-      configPath = args[i + 1];
-      i++;
-    }
-  }
-
-  const startServer = args.includes("-s");
-  const daemon = args.includes("-d");
-  return { configPath, startServer, daemon };
-}
-
-/**
- * 启动服务器
- */
-/**
  * 启动服务器
  */
 export async function startServer(configPath: string) {
   const config = await loadConfig(configPath);
 
-  console.log(`🚀 Server starting on port ${config.port}`);
+  console.log(chalk.blue(`🚀 Server starting on port ${config.port}`));
   console.log(
-    `📋 Available environments: ${Object.keys(config.environments).join(", ")}`
+    chalk.gray(
+      `📋 Available environments: ${Object.keys(config.environments).join(
+        ", "
+      )}`
+    )
   );
 
   const server = Bun.serve({
@@ -161,7 +69,7 @@ export async function startServer(configPath: string) {
 
     // 错误处理
     error(error) {
-      console.error("❌ Unhandled error:", error);
+      console.error(chalk.red("❌ Unhandled error:"), error);
       return Response.json(
         {
           error: "Internal server error",
@@ -172,29 +80,29 @@ export async function startServer(configPath: string) {
     },
   });
 
-  console.log(`✅ Server is running at http://localhost:${server.port}`);
+  console.log(
+    chalk.green(`✅ Server is running at http://localhost:${server.port}`)
+  );
   return server;
 }
 
 /**
  * 主函数入口
  */
-async function main() {
-  const { configPath, startServer: shouldStart, daemon } = await parseArgs();
-
-  // 检查是否有 -s 参数
-  if (!shouldStart) {
-    showHelp();
-    process.exit(0);
-  }
-
+/**
+ * 处理启动命令
+ */
+async function handleStartCommand(options: {
+  daemon?: boolean;
+  config: string;
+}) {
   // Daemon 模式 - 后台运行（仅 Unix/Linux/macOS）
-  if (daemon) {
+  if (options.daemon) {
     // 检查操作系统
     if (process.platform === "win32") {
-      console.error(`\n❌ Daemon mode is not supported on Windows`);
-      console.log(`\n💡 Alternative options:`);
-      console.log(`   1. Run in foreground: fde-server -s`);
+      console.error(chalk.red(`\n❌ Daemon mode is not supported on Windows`));
+      console.log(chalk.yellow(`\n💡 Alternative options:`));
+      console.log(`   1. Run in foreground: fde-server start`);
       console.log(`   2. Use Windows Task Scheduler for background service`);
       console.log(`   3. Use pm2 or similar process manager\n`);
       process.exit(1);
@@ -209,10 +117,15 @@ async function main() {
 
     // 加载配置以获取日志设置
     const { loadConfig } = await import("./config/loader");
-    const config = await loadConfig(configPath);
+    const config = await loadConfig(options.config);
 
-    // 构建参数（移除 -d 参数）
-    const args = process.argv.slice(2).filter((arg) => arg !== "-d");
+    // 构建参数（移除 -d 参数，保留 start 和其他参数）
+    // 注意：这里我们需要重新构建传递给子进程的参数
+    // 原始参数可能是: bun src/server/index.ts start -d -c config.yaml
+    // 我们需要: bun src/server/index.ts start -c config.yaml
+    const args = process.argv
+      .slice(2)
+      .filter((arg) => arg !== "-d" && arg !== "--daemon");
 
     // 从配置获取日志设置（带默认值）
     const cwd = process.cwd();
@@ -234,13 +147,15 @@ async function main() {
     // 获取当前执行文件的路径
     const execPath = process.execPath;
 
-    console.log(`🚀 Starting daemon process...`);
-    console.log(`📂 Executable: ${execPath}`);
-    console.log(`📂 Working directory: ${cwd}`);
-    console.log(`📋 Args: ${args.join(" ")}`);
-    console.log(`📄 Log file: ${logFile}`);
-    console.log(`📄 Current log size: ${currentLogSize}`);
-    console.log(`📊 Max size: ${maxSizeMB} MB, Max backups: ${maxBackups}`);
+    console.log(chalk.blue(`🚀 Starting daemon process...`));
+    console.log(chalk.gray(`📂 Executable: ${execPath}`));
+    console.log(chalk.gray(`📂 Working directory: ${cwd}`));
+    console.log(chalk.gray(`📋 Args: ${args.join(" ")}`));
+    console.log(chalk.gray(`📄 Log file: ${logFile}`));
+    console.log(chalk.gray(`📄 Current log size: ${currentLogSize}`));
+    console.log(
+      chalk.gray(`📊 Max size: ${maxSizeMB} MB, Max backups: ${maxBackups}`)
+    );
 
     // 预先创建或打开日志文件
     const logFd = openSync(logFile, "a");
@@ -257,7 +172,7 @@ async function main() {
 
     // 监听子进程错误
     child.on("error", (err) => {
-      console.error(`❌ Failed to start daemon: ${err.message}`);
+      console.error(chalk.red(`❌ Failed to start daemon: ${err.message}`));
       process.exit(1);
     });
 
@@ -271,26 +186,61 @@ async function main() {
       // 分离子进程
       child.unref();
 
-      console.log(`\n✅ Server started in daemon mode`);
+      console.log(chalk.green(`\n✅ Server started in daemon mode`));
       console.log(`📝 PID: ${child.pid}`);
       console.log(`📄 PID file: ${pidFile}`);
-      console.log(`\n💡 停止服务: kill $(cat ${pidFile})`);
-      console.log(`💡 查看日志: tail -f ${logFile}`);
+      console.log(chalk.yellow(`\n💡 停止服务: kill $(cat ${pidFile})`));
+      console.log(chalk.yellow(`💡 查看日志: tail -f ${logFile}`));
 
       process.exit(0);
     } else {
-      console.error(`❌ Failed to get child process PID`);
+      console.error(chalk.red(`❌ Failed to get child process PID`));
       process.exit(1);
     }
+  } else {
+    // 普通模式 - 前台运行
+    await startServer(options.config);
   }
+}
 
-  // 普通模式 - 前台运行
-  await startServer(configPath);
+/**
+ * 主函数入口
+ */
+async function main() {
+  const program = new Command();
+
+  program
+    .name("fde-server")
+    .description("Fast Deploy Engine Server")
+    .version(VERSION);
+
+  program
+    .command("start")
+    .description("Start the server")
+    .option("-d, --daemon", "Run server in daemon mode (Unix/Linux/macOS only)")
+    .option("-c, --config <path>", "Config file path", "./server.yaml")
+    .action(handleStartCommand);
+
+  program
+    .command("upgrade")
+    .description("Check for updates")
+    .action(async () => {
+      await checkAndUpdate();
+    });
+
+  program
+    .command("uninstall")
+    .description("Uninstall FDE")
+    .action(async () => {
+      await uninstall();
+    });
+
+  program.parse(process.argv);
 }
 
 if (import.meta.main) {
   main().catch((error) => {
-    console.error("❌ Fatal error:", error.message);
+    console.error(chalk.red("❌ Fatal error:"), error.message);
     process.exit(1);
   });
 }

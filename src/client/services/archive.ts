@@ -1,5 +1,6 @@
 import archiver from "archiver";
 import { createWriteStream } from "fs";
+import { basename } from "path";
 
 /**
  * 打包指定目录为 Zip 文件
@@ -42,12 +43,21 @@ export async function createZipArchive(
 
     archive.pipe(output);
 
+    // 获取源目录名称作为前缀
+    const rootFolder = basename(sourcePath);
+
     // 添加文件到压缩包，排除指定模式
-    archive.glob("**/*", {
-      cwd: sourcePath,
-      ignore: excludePatterns,
-      dot: true, // 包含隐藏文件
-    });
+    archive.glob(
+      "**/*",
+      {
+        cwd: sourcePath,
+        ignore: excludePatterns,
+        dot: true, // 包含隐藏文件
+      },
+      {
+        prefix: rootFolder, // 使用目录名作为前缀
+      }
+    );
 
     console.log(`📁 Archiving files from: ${sourcePath}`);
     if (excludePatterns.length > 0) {

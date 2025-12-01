@@ -47,30 +47,34 @@ iwr -useb https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.ps
 
 ```bash
 # Start server (foreground)
-fde-server -s -c server.yaml
+fde-server start -c server.yaml
 
 # Start in daemon mode (Unix/Linux/macOS only)
-fde-server -s -d -c server.yaml
+fde-server start -d -c server.yaml
 
 # Stop daemon
 ./scripts/stop-server.sh  # or stop-server.ps1 on Windows
+
+# Show version
+fde-server --version
+
+# Show help
+fde-server --help
 ```
 
 #### Client
 
 ```bash
 # Deploy to production
-fde-client -s -e prod
+fde-client deploy -e prod
 
 # Deploy with custom config
-fde-client -s -e test -c custom-deploy.yaml
+fde-client deploy -e test -c custom-deploy.yaml
 
 # Show version
-fde-server -v
 fde-client --version
 
 # Show help
-fde-server -h
 fde-client --help
 ```
 
@@ -102,8 +106,8 @@ environments:
   prod:
     serverUrl: "http://your-server.com:3000"
     authToken: "your-secret-token"
-    localPath: "./dist"
     buildCommand: "npm run build"
+    localPath: "./dist"
     exclude:
       - "node_modules"
       - ".git"
@@ -116,9 +120,9 @@ FDE can update itself to the latest version:
 
 ```bash
 # Update to latest version
-fde-server --update
+fde-server upgrade
 # or
-fde-client --update
+fde-client upgrade
 ```
 
 The update command will:
@@ -132,9 +136,9 @@ The update command will:
 
 ```bash
 # Uninstall FDE
-fde-server --uninstall
+fde-server uninstall
 # or
-fde-client --uninstall
+fde-client uninstall
 ```
 
 The uninstall command will:
