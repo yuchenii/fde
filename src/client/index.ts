@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { existsSync } from "fs";
 import { detectPathType } from "./utils/path";
 import { runBuildCommand } from "./services/build";
-import { checkServerConnection } from "./utils/server";
+import { checkServerConnection, checkServerHealth } from "./utils/server";
 import {
   uploadFileStream,
   uploadDirectoryStream,
@@ -21,9 +21,15 @@ import { uninstall } from "../utils/self-uninstall";
 async function deploy(
   env: string,
   envConfig: ClientConfig["environments"][string],
-  skipBuild: boolean = false
+  skipBuild: boolean = false,
+  triggerOnly: boolean = false
 ) {
   console.log(chalk.blue(`\n🎯 Starting deployment for environment: ${env}\n`));
+  if (triggerOnly) {
+    console.log(
+      chalk.yellow(`⚡ Trigger-only mode: Skipping build and upload`)
+    );
+  }
 
   try {
     // 1. 验证 authToken 已配置
@@ -52,50 +58,50 @@ async function deploy(
     }
 
     // 3. 执行构建命令
-    if (!skipBuild && envConfig.buildCommand) {
+    if (!triggerOnly && !skipBuild && envConfig.buildCommand) {
       await runBuildCommand(envConfig.buildCommand);
     }
 
     // 4. 验证本地路径存在
-    if (!existsSync(envConfig.localPath)) {
-      console.error(chalk.red(`\n❌ Error: Local path does not exist!`));
-      console.error(chalk.red(`   Path: ${envConfig.localPath}`));
-      console.error(
-        chalk.yellow(
-          `\n💡 Make sure the path is correct or the build command succeeded.`
-        )
-      );
-      process.exit(1);
-    }
+    if (!triggerOnly) {
+      if (!existsSync(envConfig.localPath)) {
+        console.error(chalk.red(`\n❌ Error: Local path does not exist!`));
+        console.error(chalk.red(`   Path: ${envConfig.localPath}`));
+        console.error(
+          chalk.yellow(
+            `\n💡 Make sure the path is correct or the build command succeeded.`
+          )
+        );
+        process.exit(1);
+      }
 
-    // 5. 检测路径类型
-    const pathType = await detectPathType(envConfig.localPath);
-    console.log(
-      chalk.gray(`\n🔍 Detected path type: ${pathType.toUpperCase()}`)
-    );
-
-    // 6. 根据路径类型选择上传方式（使用流式上传，支持进度条）
-    let uploadResult;
-
-    if (pathType === "directory") {
-      // 目录：压缩后流式上传
-      uploadResult = await uploadDirectoryStream(
-        envConfig.localPath,
-        envConfig.serverUrl,
-        envConfig.authToken,
-        env,
-        envConfig.exclude || [],
-        envConfig.skipChecksum || false
+      // 5. 检测路径类型
+      const pathType = await detectPathType(envConfig.localPath);
+      console.log(
+        chalk.gray(`\n🔍 Detected path type: ${pathType.toUpperCase()}`)
       );
-    } else {
-      // 单文件：流式上传
-      uploadResult = await uploadFileStream(
-        envConfig.localPath,
-        envConfig.serverUrl,
-        envConfig.authToken,
-        env,
-        envConfig.skipChecksum || false
-      );
+
+      // 6. 根据路径类型选择上传方式（使用流式上传，支持进度条）
+      if (pathType === "directory") {
+        // 目录：压缩后流式上传
+        await uploadDirectoryStream(
+          envConfig.localPath,
+          envConfig.serverUrl,
+          envConfig.authToken,
+          env,
+          envConfig.exclude || [],
+          envConfig.skipChecksum || false
+        );
+      } else {
+        // 单文件：流式上传
+        await uploadFileStream(
+          envConfig.localPath,
+          envConfig.serverUrl,
+          envConfig.authToken,
+          env,
+          envConfig.skipChecksum || false
+        );
+      }
     }
 
     // 7. 触发部署
@@ -121,6 +127,7 @@ async function handleDeployCommand(options: {
   env: string;
   config: string;
   skipBuild?: boolean;
+  triggerOnly?: boolean;
 }) {
   try {
     // 加载配置
@@ -146,11 +153,94 @@ async function handleDeployCommand(options: {
     }
 
     // 执行部署
-    await deploy(options.env, envConfig, options.skipBuild);
+    await deploy(
+      options.env,
+      envConfig,
+      options.skipBuild,
+      options.triggerOnly
+    );
   } catch (error: any) {
     if (error.message && !error.message.includes("Failed to load config")) {
       console.error(chalk.red(`❌ Error:`), error.message);
     }
+    process.exit(1);
+  }
+}
+
+/**
+ * 处理 Ping 命令
+ */
+async function handlePingCommand(options: {
+  env?: string;
+  server?: string;
+  config: string;
+}) {
+  try {
+    let serverUrl = options.server;
+
+    // 如果没有直接指定 server，尝试从环境配置获取
+    if (!serverUrl && options.env) {
+      const { loadConfig } = await import("./config/loader");
+      const config = await loadConfig(options.config);
+      const envConfig = config.environments[options.env];
+      if (envConfig) {
+        serverUrl = envConfig.serverUrl;
+      }
+    }
+
+    if (!serverUrl) {
+      console.error(
+        chalk.red(
+          "\n❌ Error: Please specify a server URL via --server or an environment via --env"
+        )
+      );
+      process.exit(1);
+    }
+
+    await checkServerConnection(serverUrl);
+  } catch (error: any) {
+    console.error(chalk.red(`❌ Error:`), error.message);
+    process.exit(1);
+  }
+}
+
+/**
+ * 处理 Health 命令
+ */
+async function handleHealthCommand(options: {
+  env?: string;
+  server?: string;
+  config: string;
+}) {
+  try {
+    let serverUrl = options.server;
+
+    // 如果没有直接指定 server，尝试从环境配置获取
+    if (!serverUrl && options.env) {
+      const { loadConfig } = await import("./config/loader");
+      const config = await loadConfig(options.config);
+      const envConfig = config.environments[options.env];
+      if (envConfig) {
+        serverUrl = envConfig.serverUrl;
+      }
+    }
+
+    if (!serverUrl) {
+      console.error(
+        chalk.red(
+          "\n❌ Error: Please specify a server URL via --server or an environment via --env"
+        )
+      );
+      process.exit(1);
+    }
+
+    const health = await checkServerHealth(serverUrl);
+    if (health) {
+      console.log(chalk.green(`\n✅ Server is healthy`));
+      console.log(JSON.stringify(health, null, 2));
+    }
+  } catch (error: any) {
+    console.error(chalk.red(`❌ Error:`), error.message);
     process.exit(1);
   }
 }
@@ -172,7 +262,24 @@ async function main() {
     .requiredOption("-e, --env <env>", "Environment name (e.g., prod, test)")
     .option("-c, --config <path>", "Config file path", "./deploy.yaml")
     .option("--skip-build", "Skip build command and upload files directly")
+    .option("--trigger-only", "Trigger server deployment without build/upload")
     .action(handleDeployCommand);
+
+  program
+    .command("ping")
+    .description("Check server connection")
+    .option("-e, --env <env>", "Environment name")
+    .option("-s, --server <url>", "Server URL")
+    .option("-c, --config <path>", "Config file path", "./deploy.yaml")
+    .action(handlePingCommand);
+
+  program
+    .command("health")
+    .description("Check server health details")
+    .option("-e, --env <env>", "Environment name")
+    .option("-s, --server <url>", "Server URL")
+    .option("-c, --config <path>", "Config file path", "./deploy.yaml")
+    .action(handleHealthCommand);
 
   program
     .command("upgrade")
