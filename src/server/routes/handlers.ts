@@ -121,26 +121,32 @@ export async function handleDeploy(
 ): Promise<Response> {
   try {
     // 获取环境参数
-    const body = (await req.json()) as { env?: string };
+    const body = (await req.json()) as { env: string };
     const { env } = body;
 
-    if (!env) {
-      return Response.json({ error: "Missing env parameter" }, { status: 400 });
-    }
+    // 获取认证token（保留在header）
+    const authToken = req.headers.get("authorization");
 
-    console.log(`\n🚀 Starting deployment for env: ${env}`);
+    console.log(`\n📨 Received upload request for env: ${env || "undefined"}`);
 
-    // 获取环境配置
-    const envConfig = config.environments[env];
-    if (!envConfig) {
+    // 验证请求
+    const validation = validateRequest(env, authToken, config);
+
+    if (!validation.valid) {
+      console.error(`❌ Validation failed: ${validation.error}`);
       return Response.json(
-        { error: `Unknown environment: ${env}` },
-        { status: 400 }
+        { error: validation.error },
+        {
+          status: validation.error?.includes("token") ? 403 : 400,
+        }
       );
     }
 
     // 执行部署命令
-    await executeDeployCommand(envConfig.deployCommand, envConfig.deployPath);
+    await executeDeployCommand(
+      validation.envConfig!.deployCommand,
+      validation.envConfig!.deployPath
+    );
 
     // 部署成功后检查并轮转日志文件
     try {
@@ -165,7 +171,7 @@ export async function handleDeploy(
     return Response.json({
       success: true,
       message: `Deployment to ${env} completed successfully`,
-      deployPath: envConfig.deployPath,
+      deployPath: validation.envConfig!.deployPath,
     });
   } catch (error: any) {
     console.error(`❌ Server error:`, error);
