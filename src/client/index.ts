@@ -105,7 +105,11 @@ async function deploy(
     }
 
     // 7. 触发部署
-    const result = await triggerDeploy(envConfig.serverUrl, env);
+    const result = await triggerDeploy(
+      envConfig.serverUrl,
+      env,
+      envConfig.authToken
+    );
 
     // 8. 显示结果
     console.log(chalk.blue("\n📊 Deployment Result:"));

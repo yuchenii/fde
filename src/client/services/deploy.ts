@@ -3,7 +3,8 @@
  */
 export async function triggerDeploy(
   serverUrl: string,
-  env: string
+  env: string,
+  authToken: string
 ): Promise<any> {
   console.log(`\n🚀 Triggering deployment...`);
 
@@ -12,6 +13,7 @@ export async function triggerDeploy(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: authToken,
       },
       body: JSON.stringify({ env }),
     });
