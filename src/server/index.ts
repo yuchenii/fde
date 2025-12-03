@@ -31,6 +31,9 @@ export async function startServer(configPath: string) {
   const server = Bun.serve({
     port: config.port,
 
+    // 允许大文件上传 (默认是 128MB，这里设置为 1GB)
+    maxRequestBodySize: 1024 * 1024 * 1024,
+
     // 使用 Bun 官方路由语法
     // 路由按特异性顺序匹配：精确路由 > 参数路由 > 通配符路由 > 全局捕获
     routes: {
