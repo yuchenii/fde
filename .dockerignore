@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+bun.lockb
+
+# Build artifacts
+dist
+
+# Git
+.git
+.gitignore
+
+# Environment & Logs
+.env
+logs
+*.log
+
+# IDE
+.vscode
+.idea
+
+# Test files
+test-file.zip
+deploy-packages
+tests
+
+# CI/CD
+.github
+.agent
+
+# Misc
+.DS_Store
+README.md
+CONTRIBUTING.md
+SECURITY.md
+CHANGELOG.md
+LICENSE
+mise.toml

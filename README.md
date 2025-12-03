@@ -3,6 +3,7 @@
 A lightweight, cross-platform deployment system built with Bun and TypeScript.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/yuchenii/fde/build.yml)](https://github.com/yuchenii/fde/actions)
+[![Docker Image Version (latest semver)](https://img.shields.io/docker/v/yuchenii/fde-server?label=docker)](https://hub.docker.com/r/yuchenii/fde-server)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## ✨ Features
@@ -86,7 +87,7 @@ fde-client --help
 port: 3000
 token: "shared-secret"
 log:
-  path: "./fde-server.log"
+  path: "./logs/fde-server.log"
   maxSize: 10 # MB
   maxBackups: 5
 
@@ -241,7 +242,7 @@ Test coverage includes:
 
 ## 📚 Documentation
 
-- [Cross-Platform Guide](CROSS_PLATFORM.md)
+- [Docker Deployment Guide](docs/docker.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 

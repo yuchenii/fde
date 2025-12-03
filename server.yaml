@@ -8,7 +8,7 @@ token: "shared-secret-token"
 # Log configuration (optional)
 log:
   # Log file path (default: ./fde-server.log)
-  path: "./fde-server.log"
+  path: "./logs/fde-server.log"
   # Log file maximum size MB (default: 10)
   maxSize: 10
   # Maximum number of log backups (default: 5)
@@ -22,7 +22,7 @@ environments:
     # Token must match the client's authToken
     token: "prod-secret-key-super-secure"
     # Deployment directory
-    deployPath: "./deploy-test/prod"
+    deployPath: "./deploy-packages/prod"
     # Deployment command (can be a single line command or a script call)
     # Single line command: deployCommand: "nginx -s reload"
     # Script call: deployCommand: "./deploy.sh"
@@ -30,10 +30,10 @@ environments:
 
   test:
     # token not specified, will use outer-level token "shared-secret-token"
-    deployPath: "./deploy-test/test"
+    deployPath: "./deploy-packages/test"
     deployCommand: "echo 'test deployed'"
 
   frontend-test:
     # token not specified, will use outer-level token "shared-secret-token"
-    deployPath: "./deploy-test/test"
+    deployPath: "./deploy-packages/test"
     deployCommand: "echo 'test deployed'"

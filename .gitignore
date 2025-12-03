@@ -12,6 +12,7 @@ coverage/
 
 # Ignore logs
 *.log
+logs/
 fde-server.log*
 fde-server.pid
 
@@ -35,8 +36,8 @@ temp/
 .env.local
 .env.*.local
 
-# Ignore deployment test directories
-deploy-test/
+# Ignore deployment package directories
+deploy-packages/
 
 # Ignore large test files
 test-file.zip

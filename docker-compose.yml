@@ -1,0 +1,40 @@
+version: '3'
+services:
+  fde-server:
+    # Use build for local development, use image for production
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: yuchenii/fde-server:latest
+    container_name: fde-server
+
+    # For docker to connect to host machine
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    
+    ports:
+      - 3000:3000
+    
+    volumes:
+      # Server config
+      - ./server.yaml:/app/server.yaml:ro
+      # SSH key for docker to connect to host machine
+      - ${HOME}/.ssh/fde_docker:/root/.ssh/id_rsa:ro
+      # Deploy packages, must be same as deployPath in server.yaml
+      - ./deploy-packages:/app/deploy-packages
+      # Logs
+      - ./logs:/app/logs
+    
+    environment:
+      # Change to your host machine username
+      - SSH_USER=yuchen
+      # Change to your host docker gateway ip, usually 172.17.0.1
+      - SSH_HOST=host.docker.internal
+      # Change to your host machine ssh port
+      - SSH_PORT=22
+      # Server config path, used to resolve relative paths in deployCommand
+      - HOST_PROJECT_PATH=/Users/yuchen/Documents/Code/Tool/fde
+      - NODE_ENV=production
+      - TZ=Asia/Shanghai
+    
+    restart: unless-stopped
