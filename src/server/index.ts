@@ -12,12 +12,65 @@ import { handleUploadStream } from "./routes/stream-handlers";
 import { VERSION } from "../version";
 import { checkAndUpdate } from "../utils/self-update";
 import { uninstall } from "../utils/self-uninstall";
+import { logger } from "./utils/logger";
+import { isDockerEnvironment } from "./utils/env";
 
 /**
  * 启动服务器
+ * @param configPath 配置文件路径
  */
 export async function startServer(configPath: string) {
   const config = await loadConfig(configPath);
+
+  // 初始化日志文件（如果需要）
+  // Daemon 模式下跳过 logger 初始化，因为 stdio 已经被重定向到文件
+  const isDaemon = process.env.FDE_DAEMON_MODE === "true";
+
+  if (!isDaemon) {
+    const isDocker = isDockerEnvironment();
+
+    if (isDocker) {
+      // Docker 环境：固定日志路径，使用默认轮转配置
+      const logPath = "/app/logs/fde-server.log";
+      const maxSizeMB = config.log?.maxSize || 10;
+      const maxBackups = config.log?.maxBackups || 5;
+
+      await logger.init(logPath, {
+        maxSize: maxSizeMB * 1024 * 1024,
+        maxBackups,
+      });
+
+      console.log(chalk.blue(`🐳 Docker environment detected`));
+      console.log(
+        chalk.gray(
+          `📄 Logs: ${logPath} (max: ${maxSizeMB}MB, backups: ${maxBackups})`
+        )
+      );
+      console.log(
+        chalk.gray(`💡 View logs: docker exec <container> cat ${logPath}`)
+      );
+      console.log(
+        chalk.gray(`💡 Tail logs: docker exec <container> tail -f ${logPath}\n`)
+      );
+    } else if (config.log?.path) {
+      // 非 Docker 环境：如果配置了日志路径，则使用配置的路径
+      const { resolve } = await import("path");
+      const logPath = resolve(process.cwd(), config.log.path);
+      const maxSizeMB = config.log.maxSize || 10;
+      const maxBackups = config.log.maxBackups || 5;
+
+      await logger.init(logPath, {
+        maxSize: maxSizeMB * 1024 * 1024,
+        maxBackups,
+      });
+
+      console.log(
+        chalk.gray(
+          `📄 Logs: ${logPath} (max: ${maxSizeMB}MB, backups: ${maxBackups})`
+        )
+      );
+    }
+  }
 
   console.log(chalk.blue(`🚀 Server starting on port ${config.port}`));
   console.log(
@@ -100,7 +153,7 @@ async function handleStartCommand(options: {
   config: string;
 }) {
   // Daemon 模式 - 后台运行（仅 Unix/Linux/macOS）
-  if (options.daemon) {
+  if (options.daemon && !isDockerEnvironment()) {
     // 检查操作系统
     if (process.platform === "win32") {
       console.error(chalk.red(`\n❌ Daemon mode is not supported on Windows`));
@@ -122,14 +175,6 @@ async function handleStartCommand(options: {
     const { loadConfig } = await import("./config/loader");
     const config = await loadConfig(options.config);
 
-    // 构建参数（移除 -d 参数，保留 start 和其他参数）
-    // 注意：这里我们需要重新构建传递给子进程的参数
-    // 原始参数可能是: bun src/server/index.ts start -d -c config.yaml
-    // 我们需要: bun src/server/index.ts start -c config.yaml
-    const args = process.argv
-      .slice(2)
-      .filter((arg) => arg !== "-d" && arg !== "--daemon");
-
     // 从配置获取日志设置（带默认值）
     const cwd = process.cwd();
     const logPath = config.log?.path || "./fde-server.log";
@@ -150,6 +195,11 @@ async function handleStartCommand(options: {
     // 获取当前执行文件的路径
     const execPath = process.execPath;
 
+    // 构建参数（移除 -d 参数，保留 start 和其他参数）
+    const args = process.argv
+      .slice(2)
+      .filter((arg) => arg !== "-d" && arg !== "--daemon");
+
     console.log(chalk.blue(`🚀 Starting daemon process...`));
     console.log(chalk.gray(`📂 Executable: ${execPath}`));
     console.log(chalk.gray(`📂 Working directory: ${cwd}`));
@@ -164,10 +214,15 @@ async function handleStartCommand(options: {
     const logFd = openSync(logFile, "a");
 
     // Fork 子进程，直接将 stdio 重定向到文件
+    // 设置环境变量告诉子进程它是 daemon 模式，跳过 logger 初始化
     const child = spawn(execPath, args, {
       detached: true,
       stdio: ["ignore", logFd, logFd],
       cwd: cwd,
+      env: {
+        ...process.env,
+        FDE_DAEMON_MODE: "true", // 标记 daemon 模式
+      },
     });
 
     // 关闭父进程中的文件描述符
@@ -201,6 +256,23 @@ async function handleStartCommand(options: {
       process.exit(1);
     }
   } else {
+    // Docker 环境下忽略 daemon 参数
+    if (isDockerEnvironment()) {
+      console.log(
+        chalk.yellow(
+          `\n💡 Docker containers manage the process lifecycle automatically`
+        )
+      );
+      console.log(
+        chalk.yellow(
+          `\n💡 Docker containers manage the process lifecycle automatically`
+        )
+      );
+      console.log(
+        chalk.yellow(`   Just run the container normally without -d flag\n`)
+      );
+    }
+
     // 普通模式 - 前台运行
     await startServer(options.config);
   }

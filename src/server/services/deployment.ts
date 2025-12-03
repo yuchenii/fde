@@ -4,19 +4,9 @@ import { existsSync } from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
 import type { EnvironmentConfig } from "../types";
+import { isDockerEnvironment } from "../utils/env";
 
 const execAsync = promisify(exec);
-
-/**
- * 检测是否在 Docker 环境中运行
- */
-function isDockerEnvironment(): boolean {
-  try {
-    return existsSync("/.dockerenv") || existsSync("/run/.containerenv");
-  } catch {
-    return false;
-  }
-}
 
 /**
  * 解析部署命令路径
