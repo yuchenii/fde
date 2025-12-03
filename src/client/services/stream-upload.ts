@@ -34,10 +34,6 @@ export async function uploadFileStream(
       console.log(`⏭️  Skipping checksum verification`);
     }
 
-    // 读取文件为 Blob
-    const file = Bun.file(filePath);
-    const blob = await file.arrayBuffer();
-
     // 创建进度条
     const progressBar = new cliProgress.SingleBar({
       format:
@@ -47,8 +43,8 @@ export async function uploadFileStream(
       hideCursor: true,
     });
 
-    const totalMB = (blob.byteLength / 1024 / 1024).toFixed(2);
-    progressBar.start(blob.byteLength, 0, {
+    const totalMB = (fileSize / 1024 / 1024).toFixed(2);
+    progressBar.start(fileSize, 0, {
       uploadedMB: "0.00",
       totalMB: totalMB,
       speed: "0 KB/s",
@@ -56,58 +52,48 @@ export async function uploadFileStream(
     });
 
     const startTime = Date.now();
-
-    // 创建可读流并跟踪进度
     let uploadedBytes = 0;
-    const stream = new ReadableStream({
-      async start(controller) {
-        const chunkSize = 64 * 1024; // 64KB chunks
-        const uint8Array = new Uint8Array(blob);
 
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.slice(
-            i,
-            Math.min(i + chunkSize, uint8Array.length)
-          );
-          controller.enqueue(chunk);
+    // 使用 TransformStream 来监控进度
+    // 当 fetch 从流中读取数据时，transform 方法会被调用
+    const progressStream = new TransformStream({
+      transform(chunk, controller) {
+        uploadedBytes += chunk.length;
 
-          uploadedBytes += chunk.length;
+        // 计算速度
+        const elapsed = Math.max((Date.now() - startTime) / 1000, 0.001);
+        const bytesPerSecond = uploadedBytes / elapsed;
 
-          // 计算速度
-          const elapsed = Math.max((Date.now() - startTime) / 1000, 0.001);
-          const bytesPerSecond = uploadedBytes / elapsed;
-
-          // 动态速度单位
-          let speedText: string;
-          if (bytesPerSecond < 1024 * 1024) {
-            speedText = `${(bytesPerSecond / 1024).toFixed(0)} KB/s`;
-          } else if (bytesPerSecond < 1024 * 1024 * 1024) {
-            speedText = `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} MB/s`;
-          } else {
-            speedText = `${(bytesPerSecond / (1024 * 1024 * 1024)).toFixed(
-              2
-            )} GB/s`;
-          }
-
-          // 计算ETA
-          const remainingBytes = blob.byteLength - uploadedBytes;
-          const eta = (remainingBytes / Math.max(bytesPerSecond, 1)).toFixed(0);
-
-          progressBar.update(uploadedBytes, {
-            uploadedMB: (uploadedBytes / 1024 / 1024).toFixed(2),
-            totalMB: totalMB,
-            speed: speedText,
-            eta: eta,
-          });
-
-          // 模拟网络延迟，让进度条可见
-          // await new Promise((resolve) => setTimeout(resolve, 10));
+        // 动态速度单位
+        let speedText: string;
+        if (bytesPerSecond < 1024 * 1024) {
+          speedText = `${(bytesPerSecond / 1024).toFixed(0)} KB/s`;
+        } else if (bytesPerSecond < 1024 * 1024 * 1024) {
+          speedText = `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} MB/s`;
+        } else {
+          speedText = `${(bytesPerSecond / (1024 * 1024 * 1024)).toFixed(
+            2
+          )} GB/s`;
         }
 
-        controller.close();
-        progressBar.stop();
+        // 计算ETA
+        const remainingBytes = fileSize - uploadedBytes;
+        const eta = (remainingBytes / Math.max(bytesPerSecond, 1)).toFixed(0);
+
+        progressBar.update(uploadedBytes, {
+          uploadedMB: (uploadedBytes / 1024 / 1024).toFixed(2),
+          totalMB: totalMB,
+          speed: speedText,
+          eta: eta,
+        });
+
+        controller.enqueue(chunk);
       },
     });
+
+    // 获取文件流并连接到进度流
+    const file = Bun.file(filePath);
+    const stream = file.stream().pipeThrough(progressStream);
 
     // 构建查询参数
     const queryParams = new URLSearchParams({
@@ -121,10 +107,12 @@ export async function uploadFileStream(
     }
 
     // 只保留认证信息在header
+    // 注意：使用 stream 时不要设置 Content-Length，让 fetch 自动处理
+    // 或者如果知道确切大小，可以设置，但要小心
     const headers: Record<string, string> = {
       authorization: authToken,
       "Content-Type": "application/octet-stream",
-      "Content-Length": blob.byteLength.toString(),
+      // "Content-Length": fileSize.toString(), // 可选，有些服务器需要
     };
 
     // 发送流式请求
@@ -152,7 +140,11 @@ export async function uploadFileStream(
       );
     }
 
-    // 完成后输出（进度条已经换行了）
+    // 确保进度条完成
+    progressBar.update(fileSize);
+    progressBar.stop();
+
+    // 完成后输出
     console.log(`✅ Upload completed successfully!`);
     return result;
   } catch (error: any) {
