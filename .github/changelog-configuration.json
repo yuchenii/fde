@@ -23,13 +23,14 @@
   ],
   "ignore_labels": ["ignore"],
   "sort": "prio",
-  "template": "${{CHANGELOG}}",
+  "template": "${{CHANGELOG}}\n\n<details>\n<summary>🔌 Uncategorized</summary>\n\n${{UNCATEGORIZED}}\n</details>",
   "pr_template": "- ${{TITLE}} #${{NUMBER}}",
   "empty_template": "- No changes",
   "label_extractor": [
     {
-      "pattern": "^(feat|fix|chore|docs|style|refactor|perf|test|build|ci)(\\(.+\\))?:",
-      "target": "$1"
+      "pattern": "^([a-z]+)(?:\\(.*\\))?:",
+      "target": "$1",
+      "on_property": "title"
     }
   ]
 }
