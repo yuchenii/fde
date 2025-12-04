@@ -69,6 +69,9 @@ export async function handleUploadStream(
       chunks.push(value);
       totalSize += value.length;
 
+      // // 临时：模拟网络延迟
+      // await new Promise((r) => setTimeout(r, 50));
+
       // 节流日志，每秒最多打印一次
       throttledProgressLog(totalSize);
     }
