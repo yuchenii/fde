@@ -1,6 +1,12 @@
 import type { ServerConfig } from "../types";
 import { validateRequest } from "../services/validation";
 import { extractAndDeploy, saveFile } from "../services/deployment";
+import { throttle } from "../../utils/throttle";
+
+// 节流日志：每秒最多打印一次
+const throttledProgressLog = throttle((totalSize: number) => {
+  console.log(`📥 Received ${(totalSize / 1024).toFixed(2)} KB...`);
+}, 1000);
 
 /**
  * POST /upload-stream - 流式上传接口（支持进度跟踪）
@@ -63,8 +69,8 @@ export async function handleUploadStream(
       chunks.push(value);
       totalSize += value.length;
 
-      // 可以在这里发送进度更新（如果使用 WebSocket）
-      console.log(`📥 Received ${(totalSize / 1024).toFixed(2)} KB...`);
+      // 节流日志，每秒最多打印一次
+      throttledProgressLog(totalSize);
     }
 
     const buffer = Buffer.concat(chunks);
