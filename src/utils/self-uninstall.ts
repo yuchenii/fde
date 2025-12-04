@@ -1,29 +1,22 @@
-import {
-  existsSync,
-  unlinkSync,
-  readdirSync,
-  writeFileSync,
-  rmdirSync,
-} from "fs";
+import { existsSync, unlinkSync, readdirSync, writeFileSync } from "fs";
 import { dirname, basename, join } from "path";
 import { spawn } from "child_process";
 
 const isWindows = process.platform === "win32";
 
 /**
- * Create a Windows batch script for delayed uninstall
+ * Create a Windows batch script for delayed uninstall in TEMP directory
  * The script waits for the process to exit, then deletes the files
  */
 function createWindowsUninstallScript(
   installDir: string,
   filesToRemove: string[]
 ): string {
-  const scriptPath = join(installDir, "fde-uninstall.bat");
+  // Create script in TEMP directory so it doesn't block rmdir
+  const tempDir = process.env.TEMP || "C:\\Windows\\Temp";
+  const scriptPath = join(tempDir, `fde-uninstall-${Date.now()}.bat`);
 
-  // Create batch script content
-  // - Wait 2 seconds for the process to exit
-  // - Delete each file
-  // - Delete the script itself
+  // Delete commands for all FDE files
   const deleteCommands = filesToRemove
     .map((f) => `del /f /q "${join(installDir, f)}" 2>nul`)
     .join("\n");
@@ -31,11 +24,13 @@ function createWindowsUninstallScript(
   const scriptContent = `@echo off
 echo Waiting for FDE to exit...
 timeout /t 2 /nobreak >nul
+echo.
+echo Removing FDE files...
 ${deleteCommands}
 echo.
 echo FDE files removed successfully.
 echo.
-echo Removing install directory if empty...
+echo Removing install directory...
 rmdir "${installDir}" 2>nul
 if exist "${installDir}" (
   echo Note: Install directory not empty, keeping it.
@@ -46,7 +41,9 @@ echo.
 echo Note: FDE may still be in your PATH.
 echo You may want to remove it manually from System Environment Variables.
 echo.
-del /f /q "%~f0"
+echo Uninstall complete. Press any key to close...
+pause >nul
+(del /f /q "%~f0" >nul 2>&1 & exit)
 `;
 
   writeFileSync(scriptPath, scriptContent);
@@ -128,12 +125,17 @@ export async function uninstall(): Promise<void> {
     filesToRemove.forEach((f) => console.log(`  - ${f}`));
     console.log("");
 
-    // Start the batch script in a detached process
-    const child = spawn("cmd.exe", ["/c", scriptPath], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
+    // Use 'start' to run the batch script in a new visible window
+    // This ensures pause works and user can see the output
+    const child = spawn(
+      "cmd.exe",
+      ["/c", "start", "FDE Uninstall", scriptPath],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }
+    );
     child.unref();
 
     // Exit immediately so the batch script can delete files
@@ -154,15 +156,6 @@ export async function uninstall(): Promise<void> {
     }
 
     console.log(`\n🎉 Uninstalled ${removedCount} file(s)`);
-
-    // Try to remove the install directory if empty
-    try {
-      rmdirSync(installDir);
-      console.log(`📁 Removed empty install directory: ${installDir}`);
-    } catch {
-      console.log(`\n📁 Install directory not empty, keeping: ${installDir}`);
-    }
-
     console.log("\nNote: FDE may still be in your PATH.");
     console.log(
       "You may want to remove it manually from your shell configuration."

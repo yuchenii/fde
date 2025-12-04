@@ -1,7 +1,9 @@
 # FDE Installation Script for Windows
 
 param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\Programs\FDE"
+    [string]$InstallDir = "$env:LOCALAPPDATA\Programs\FDE",
+    [ValidateSet("both", "server", "client")]
+    [string]$Component = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +30,34 @@ Write-Host "   Platform: $OS-$ARCH"
 Write-Host "   Install Directory: $InstallDir"
 Write-Host ""
 
+# Component selection
+if ($Component -eq "") {
+    Write-Host "What would you like to install?" -ForegroundColor Cyan
+    Write-Host "   1) Both server and client (default)"
+    Write-Host "   2) Server only"
+    Write-Host "   3) Client only"
+    Write-Host ""
+    $choice = Read-Host "Enter your choice [1-3]"
+    
+    switch ($choice) {
+        "2" { $Component = "server" }
+        "3" { $Component = "client" }
+        default { $Component = "both" }
+    }
+}
+
+$InstallServer = ($Component -eq "both") -or ($Component -eq "server")
+$InstallClient = ($Component -eq "both") -or ($Component -eq "client")
+
+if ($InstallServer -and $InstallClient) {
+    Write-Host "Installing both server and client" -ForegroundColor Green
+} elseif ($InstallServer) {
+    Write-Host "Installing server only" -ForegroundColor Green
+} else {
+    Write-Host "Installing client only" -ForegroundColor Green
+}
+Write-Host ""
+
 # Create installation directory
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
@@ -40,20 +70,23 @@ Write-Host "Latest version: $LATEST_VERSION" -ForegroundColor Green
 Write-Host ""
 
 # Download files
-$SERVER_FILE = "fde-server-$OS-$ARCH.exe"
-$CLIENT_FILE = "fde-client-$OS-$ARCH.exe"
 $BASE_URL = "https://github.com/$REPO/releases/download/$LATEST_VERSION"
 
-Write-Host "Downloading $SERVER_FILE..." -ForegroundColor Yellow
-Invoke-WebRequest -Uri "$BASE_URL/$SERVER_FILE" -OutFile "$InstallDir\$SERVER_FILE"
+if ($InstallServer) {
+    $SERVER_FILE = "fde-server-$OS-$ARCH.exe"
+    Write-Host "Downloading $SERVER_FILE..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri "$BASE_URL/$SERVER_FILE" -OutFile "$InstallDir\$SERVER_FILE"
+    Rename-Item -Path "$InstallDir\$SERVER_FILE" -NewName "fde-server.exe" -Force
+    Write-Host "✓ Server installed" -ForegroundColor Green
+}
 
-Write-Host "Downloading $CLIENT_FILE..." -ForegroundColor Yellow
-Invoke-WebRequest -Uri "$BASE_URL/$CLIENT_FILE" -OutFile "$InstallDir\$CLIENT_FILE"
-
-# Rename to short names
-Write-Host "Installing..." -ForegroundColor Yellow
-Rename-Item -Path "$InstallDir\$SERVER_FILE" -NewName "fde-server.exe" -Force
-Rename-Item -Path "$InstallDir\$CLIENT_FILE" -NewName "fde-client.exe" -Force
+if ($InstallClient) {
+    $CLIENT_FILE = "fde-client-$OS-$ARCH.exe"
+    Write-Host "Downloading $CLIENT_FILE..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri "$BASE_URL/$CLIENT_FILE" -OutFile "$InstallDir\$CLIENT_FILE"
+    Rename-Item -Path "$InstallDir\$CLIENT_FILE" -NewName "fde-client.exe" -Force
+    Write-Host "✓ Client installed" -ForegroundColor Green
+}
 
 # Add to PATH if not present
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -68,7 +101,11 @@ if ($UserPath -notlike "*$InstallDir*") {
 
 Write-Host "`nInstallation completed!" -ForegroundColor Green
 Write-Host "   Location: $InstallDir"
-Write-Host "   Server: fde-server.exe -s -c server.yaml"
-Write-Host "   Client: fde-client.exe -s -e prod"
+if ($InstallServer) {
+    Write-Host "   Server: fde-server.exe start -c server.yaml"
+}
+if ($InstallClient) {
+    Write-Host "   Client: fde-client.exe deploy -e prod"
+}
 Write-Host ""
 Write-Host "Welcome to FDE!" -ForegroundColor Green

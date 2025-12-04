@@ -9,6 +9,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}============================================================${NC}"
@@ -63,6 +64,33 @@ echo "   Platform: $OS-$ARCH"
 echo "   Install Directory: $INSTALL_DIR"
 echo ""
 
+# Component selection
+echo -e "${CYAN}What would you like to install?${NC}"
+echo "   1) Both server and client (default)"
+echo "   2) Server only"
+echo "   3) Client only"
+echo ""
+read -p "Enter your choice [1-3]: " CHOICE
+
+case "$CHOICE" in
+  2)
+    INSTALL_SERVER=true
+    INSTALL_CLIENT=false
+    echo -e "${GREEN}Installing server only${NC}"
+    ;;
+  3)
+    INSTALL_SERVER=false
+    INSTALL_CLIENT=true
+    echo -e "${GREEN}Installing client only${NC}"
+    ;;
+  *)
+    INSTALL_SERVER=true
+    INSTALL_CLIENT=true
+    echo -e "${GREEN}Installing both server and client${NC}"
+    ;;
+esac
+echo ""
+
 # Create installation directory
 mkdir -p "$INSTALL_DIR"
 
@@ -79,31 +107,36 @@ echo -e "${GREEN}Latest version: $LATEST_VERSION${NC}"
 echo ""
 
 # Download files
-SERVER_FILE="fde-server-$OS-$ARCH"
-CLIENT_FILE="fde-client-$OS-$ARCH"
 BASE_URL="https://github.com/$REPO/releases/download/$LATEST_VERSION"
 
-echo "Downloading $SERVER_FILE..."
-curl -L -o "$INSTALL_DIR/$SERVER_FILE" "$BASE_URL/$SERVER_FILE" --progress-bar
+if [ "$INSTALL_SERVER" = true ]; then
+    SERVER_FILE="fde-server-$OS-$ARCH"
+    echo "Downloading $SERVER_FILE..."
+    curl -L -o "$INSTALL_DIR/$SERVER_FILE" "$BASE_URL/$SERVER_FILE" --progress-bar
+    chmod +x "$INSTALL_DIR/$SERVER_FILE"
+    mv "$INSTALL_DIR/$SERVER_FILE" "$INSTALL_DIR/fde-server"
+    echo -e "${GREEN}✓ Server installed${NC}"
+fi
 
-echo "Downloading $CLIENT_FILE..."
-curl -L -o "$INSTALL_DIR/$CLIENT_FILE" "$BASE_URL/$CLIENT_FILE" --progress-bar
-
-# Set executable permissions
-chmod +x "$INSTALL_DIR/$SERVER_FILE"
-chmod +x "$INSTALL_DIR/$CLIENT_FILE"
-
-# Rename to short names
-echo "Installing..."
-mv "$INSTALL_DIR/$SERVER_FILE" "$INSTALL_DIR/fde-server"
-mv "$INSTALL_DIR/$CLIENT_FILE" "$INSTALL_DIR/fde-client"
+if [ "$INSTALL_CLIENT" = true ]; then
+    CLIENT_FILE="fde-client-$OS-$ARCH"
+    echo "Downloading $CLIENT_FILE..."
+    curl -L -o "$INSTALL_DIR/$CLIENT_FILE" "$BASE_URL/$CLIENT_FILE" --progress-bar
+    chmod +x "$INSTALL_DIR/$CLIENT_FILE"
+    mv "$INSTALL_DIR/$CLIENT_FILE" "$INSTALL_DIR/fde-client"
+    echo -e "${GREEN}✓ Client installed${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}Installation completed!${NC}"
 echo ""
 echo -e "${YELLOW}Usage:${NC}"
-echo "   Server: fde-server -s -c server.yaml"
-echo "   Client: fde-client -s -e prod"
+if [ "$INSTALL_SERVER" = true ]; then
+    echo "   Server: fde-server start -c server.yaml"
+fi
+if [ "$INSTALL_CLIENT" = true ]; then
+    echo "   Client: fde-client deploy -e prod"
+fi
 echo ""
 
 # Check PATH
