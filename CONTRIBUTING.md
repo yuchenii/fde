@@ -11,11 +11,11 @@ Thank you for your interest in contributing to FDE! 🎉
 - [Coding Guidelines](#coding-guidelines)
 - [Testing](#testing)
 
-## Code of Conduct
+## 📜 Code of Conduct
 
 This project and everyone participating in it is governed by respect and professionalism. Please be kind and courteous to others.
 
-## How Can I Contribute?
+## 🤝 How Can I Contribute?
 
 ### 🐛 Reporting Bugs
 
@@ -48,7 +48,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
 
-## Development Setup
+## 🔧 Development Setup
 
 ### Prerequisites
 
@@ -75,7 +75,7 @@ bun run dev:server
 bun run dev:client
 ```
 
-## Pull Request Process
+## 📥 Pull Request Process
 
 1. **Update documentation** - Update README.md or other docs if needed
 2. **Add tests** - Add tests for new features
@@ -84,7 +84,7 @@ bun run dev:client
 5. **Follow style guide** - Follow the coding guidelines below
 6. **Small, focused changes** - Keep PRs focused on a single concern
 
-## Coding Guidelines
+## 📝 Coding Guidelines
 
 ### TypeScript Style
 
@@ -134,7 +134,7 @@ docs: update installation instructions
 test: add checksum verification tests
 ```
 
-## Testing
+## 🧪 Testing
 
 ### Running Tests
 
@@ -173,26 +173,54 @@ describe("Feature Name", () => {
 });
 ```
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 fde/
 ├── src/
-│   ├── client/          # Client-side code
-│   │   ├── services/    # Upload, deploy services
-│   │   ├── utils/       # Utilities
-│   │   └── index.ts     # Entry point
-│   └── server/          # Server-side code
-│       ├── routes/      # API handlers
-│       ├── services/    # Deployment services
-│       ├── utils/       # Utilities
-│       └── index.ts     # Entry point
-├── tests/              # Test files
-├── scripts/            # Utility scripts
-└── dist/               # Compiled binaries
+│   ├── client/                # Client-side code
+│   │   ├── config/
+│   │   │   └── loader.ts      # Config file parser
+│   │   ├── services/
+│   │   │   ├── archive.ts     # Directory compression (withTempZip)
+│   │   │   ├── build.ts       # Build command execution
+│   │   │   ├── deploy.ts      # Deploy trigger
+│   │   │   ├── streamUpload.ts # Streaming upload with progress
+│   │   │   └── upload.ts      # FormData upload
+│   │   ├── utils/
+│   │   │   ├── healthCheck.ts # Server connectivity checks
+│   │   │   ├── path.ts        # Path type detection
+│   │   │   └── response.ts    # JSON response parser
+│   │   ├── types.ts           # Client type definitions
+│   │   └── index.ts           # CLI entry point
+│   ├── server/                # Server-side code
+│   │   ├── config/
+│   │   │   └── loader.ts      # Config file parser
+│   │   ├── routes/
+│   │   │   ├── handlers.ts    # Upload/Deploy handlers
+│   │   │   └── streamHandlers.ts # Streaming upload handler
+│   │   ├── services/
+│   │   │   ├── deployment.ts  # File extraction, command execution
+│   │   │   └── validation.ts  # Auth & checksum verification
+│   │   ├── utils/
+│   │   │   ├── env.ts         # Docker detection
+│   │   │   ├── logger.ts      # Logging with rotation
+│   │   │   └── logRotate.ts   # Log rotation logic
+│   │   ├── types.ts           # Server type definitions
+│   │   └── index.ts           # HTTP server entry point
+│   ├── utils/                 # Shared utilities
+│   │   ├── checksum.ts        # SHA256 checksum
+│   │   ├── command.ts         # Script path resolution
+│   │   ├── selfUninstall.ts   # Self-uninstall logic
+│   │   ├── selfUpdate.ts      # Self-update logic
+│   │   └── throttle.ts        # Throttle function
+│   └── version.ts             # Version constant
+├── tests/                     # Test files
+├── scripts/                   # Utility scripts
+└── dist/                      # Compiled binaries
 ```
 
-## Questions?
+## ❓ Questions?
 
 Feel free to open an issue for any questions or concerns!
 

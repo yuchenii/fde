@@ -1,76 +1,145 @@
 # FDE
 
-A lightweight, cross-platform deployment system built with Bun and TypeScript.
+> **A manual deployment tool for environments where CI/CD is unavailable.**
+>
+> Lightweight, single-binary, and air-gap ready.
 
-[![Build](https://img.shields.io/github/actions/workflow/status/yuchenii/fde/build.yml)](https://github.com/yuchenii/fde/actions)
-[![Docker Image Version (latest semver)](https://img.shields.io/docker/v/yuchenii/fde-server?label=docker)](https://hub.docker.com/r/yuchenii/fde-server)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/yuchenii/fde/build.yml?style=flat-square&logo=github)](https://github.com/yuchenii/fde/actions)
+[![Docker Version](https://img.shields.io/docker/v/yuchenii/fde-server?label=docker&style=flat-square&logo=docker)](https://hub.docker.com/r/yuchenii/fde-server)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square)](README.md#supported-platforms)
 
-## ✨ Features
+---
 
-- 🚀 **Fast & Lightweight** - Single binary, no dependencies
-- 🌍 **Cross-Platform** - macOS, Linux, Windows (ARM64 & x64)
-- 📦 **Multiple Upload Modes** - FormData, Streaming with real-time progress
-- 🔒 **Secure** - Token authentication, SHA256 checksum verification
-- 📊 **Real-time Progress** - Beautiful progress bars during upload
-- 🔄 **Hot Reload** - Development mode with auto-restart
-- 🛡️ **Type-Safe** - Written in TypeScript
-- 📝 **Configurable Logging** - Auto-rotating logs with size limits
-- 🔧 **Daemon Mode** - Background process on Unix/Linux/macOS
+## 🎯 When to use FDE?
 
-## 📦 Supported Platforms
+FDE is **not** a replacement for modern CI/CD pipelines (GitHub Actions, GitLab CI). Instead, it is designed for specific scenarios where those tools cannot be used:
 
-| Platform | ARM64 | x64 |
-| -------- | ----- | --- |
-| macOS    | ✅    | ✅  |
-| Linux    | ✅    | ✅  |
-| Windows  | ❌    | ✅  |
+- **🚫 Air-Gapped Networks**: The deployment target has no internet connection.
+- **🛡️ Bastion Hosts**: You must deploy through a jump server (bastion).
+- **🔌 Direct Connection**: You need a simple way to push files from a local machine to a remote server.
+- **⚡ Rapid Iteration**: Instant deployment without waiting for complex CI queues.
+
+---
 
 ## 🚀 Quick Start
 
-### Installation
+Follow these steps to get your deployment system up and running in minutes.
 
-#### macOS / Linux
+### 1. Installation
+
+Install both the server and client binaries on your respective machines.
+
+**macOS / Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.sh | bash
 ```
 
-#### Windows (PowerShell)
+**Windows (PowerShell):**
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.ps1 | iex
 ```
 
-### Usage
+### 2. Configure Server
 
-#### Server
+On your **server**, create a `server.yaml` file:
+
+```yaml
+port: 3000 # Port to listen on
+environments:
+  prod:
+    token: "my-secret-token" # Security token for this environment
+    deployPath: "/var/www/html" # Where files will be extracted
+    deployCommand: "nginx -s reload" # Command to run after extraction
+```
+
+### 3. Start Server
+
+Start the FDE server using the config file you just created:
 
 ```bash
-# Start server (foreground)
+# Start in foreground
 fde-server start -c server.yaml
 
-# Start in daemon mode (Unix/Linux/macOS only)
+# Or run in background (Daemon mode)
 fde-server start -d -c server.yaml
+```
 
-# Stop daemon
-./scripts/stop-server.sh  # or stop-server.ps1 on Windows
+### 4. Deploy
 
-# Show version
+On your **local machine** (where your code is), create a `deploy.yaml` file:
+
+```yaml
+environments:
+  prod:
+    serverUrl: "http://your-server-ip:3000"
+    authToken: "my-secret-token" # Must match server config
+    buildCommand: "npm run build" # Command to build your project
+    localPath: "./dist" # Local folder to upload
+```
+
+Then run the deploy command:
+
+```bash
+fde-client deploy -e prod
+```
+
+---
+
+## 📖 Detailed Usage
+
+### Commands
+
+#### Server Commands
+
+```bash
+# Start server
+fde-server start -c server.yaml
+
+# Manage daemon (Unix-like systems only)
+fde-server start -d -c server.yaml
+./scripts/stop-server.sh
+
+# Update server
+fde-server upgrade
+
+# Uninstall server
+fde-server uninstall
+
+# Check version
 fde-server --version
 
 # Show help
 fde-server --help
 ```
 
-#### Client
+#### Client Commands
 
 ```bash
-# Deploy to production
+# Deploy to specific environment
 fde-client deploy -e prod
 
-# Deploy with custom config
-fde-client deploy -e test -c custom-deploy.yaml
+# Skip build step (upload only)
+fde-client deploy -e prod --skip-build
+
+# Trigger deployment command only (no build/upload)
+fde-client deploy -e prod --trigger-only
+
+# Check server connectivity
+fde-client ping -e prod
+fde-client ping -s http://localhost:3000
+
+# Check server health
+fde-client health -e prod
+fde-client health -s http://localhost:3000
+
+# Update client
+fde-client upgrade
+
+# Uninstall client
+fde-client uninstall
 
 # Show version
 fde-client --version
@@ -79,117 +148,117 @@ fde-client --version
 fde-client --help
 ```
 
-## ⚙️ Configuration
+### Configuration
 
-### Server Config (server.yaml)
+#### Server Configuration (`server.yaml`)
 
-```yaml
-port: 3000
-token: "shared-secret"
-log:
-  path: "./logs/fde-server.log"
-  maxSize: 10 # MB
-  maxBackups: 5
+| Field            | Type     | Required | Default            | Description                                                        |
+| :--------------- | :------- | :------- | :----------------- | :----------------------------------------------------------------- |
+| `port`           | `number` | **Yes**  | -                  | Port for the server to listen on.                                  |
+| `token`          | `string` | No       | -                  | Global security token. Used if an environment doesn't specify one. |
+| `environments`   | `object` | **Yes**  | -                  | Dictionary of environment configurations (e.g., `prod`, `test`).   |
+| `log.path`       | `string` | No       | `./fde-server.log` | Path to the log file. Resolved relative to config file.            |
+| `log.maxSize`    | `number` | No       | `10`               | Maximum log file size in MB before rotation.                       |
+| `log.maxBackups` | `number` | No       | `5`                | Number of rotated log files to keep.                               |
 
-environments:
-  prod:
-    token: "your-secret-token"
-    deployPath: "/var/www/html"
-    deployCommand: "nginx -s reload"
-```
+**Environment Object (`environments.<name>`):**
 
-### Client (deploy.yaml)
+| Field           | Type     | Required | Default        | Description                                                                  |
+| :-------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------- |
+| `token`         | `string` | No       | Global `token` | Environment-specific token. Overrides global token.                          |
+| `deployPath`    | `string` | **Yes**  | -              | Absolute path or path relative to config file where files will be extracted. |
+| `deployCommand` | `string` | **Yes**  | -              | Command executed after extraction.                                           |
 
-```yaml
-token: "shared-secret"
+#### Client Configuration (`deploy.yaml`)
 
-environments:
-  prod:
-    serverUrl: "http://your-server.com:3000"
-    authToken: "your-secret-token"
-    buildCommand: "npm run build"
-    localPath: "./dist"
-    exclude:
-      - "node_modules"
-      - ".git"
-      - "*.log"
-```
+| Field          | Type     | Required | Default | Description                               |
+| :------------- | :------- | :------- | :------ | :---------------------------------------- |
+| `token`        | `string` | No       | -       | Global security token fallback.           |
+| `environments` | `object` | **Yes**  | -       | Dictionary of environment configurations. |
 
-### Path Resolution
+**Environment Object (`environments.<name>`):**
 
-All relative paths in config files are resolved relative to the **config file directory**, not the current working directory.
+| Field          | Type       | Required | Default        | Description                                                                  |
+| :------------- | :--------- | :------- | :------------- | :--------------------------------------------------------------------------- |
+| `serverUrl`    | `string`   | **Yes**  | -              | Full URL of the FDE server (e.g., `http://10.0.0.1:3000`).                   |
+| `authToken`    | `string`   | No       | Global `token` | Auth token matching the server's environment token.                          |
+| `localPath`    | `string`   | **Yes**  | -              | Local directory or file to deploy. Resolved relative to config file.         |
+| `buildCommand` | `string`   | No       | -              | Command to run locally before upload (e.g., `npm run build`).                |
+| `exclude`      | `string[]` | No       | -              | List of glob patterns to exclude from upload (e.g., `node_modules`, `.git`). |
+| `skipChecksum` | `boolean`  | No       | `false`        | If `true`, skips SHA256 checksum calculation (not recommended).              |
 
-#### Config Paths
+### 🐳 Docker Support
 
-| Config Field | Resolution                              |
-| ------------ | --------------------------------------- |
-| `deployPath` | Relative to config file → Absolute path |
-| `localPath`  | Relative to config file → Absolute path |
-| `log.path`   | Relative to config file → Absolute path |
-
-#### Command Working Directory
-
-| Command Format          | Working Directory                                |
-| ----------------------- | ------------------------------------------------ |
-| `./scripts/deploy.sh`   | Script's directory (`scripts/`)                  |
-| `../deploy.sh`          | Script's directory (resolved relative to config) |
-| `/opt/scripts/run.sh`   | Script's directory (`/opt/scripts/`)             |
-| `npm run build`         | Current working directory (`process.cwd()`)      |
-| `sh ./scripts/build.sh` | Current working directory (shell handles path)   |
-
-**Examples:**
-
-```yaml
-# server.yaml in /home/user/project/
-environments:
-  prod:
-    deployPath: "./deploy-packages/prod" # → /home/user/project/deploy-packages/prod
-    deployCommand: "./scripts/deploy.sh" # Executes in /home/user/project/scripts/
-  test:
-    deployPath: "./deploy-packages/test"
-    deployCommand: "npm run restart" # Executes in current working directory
-```
-
-### Update
-
-FDE can update itself to the latest version:
+If you prefer using Docker for the server:
 
 ```bash
-# Update to latest version
-fde-server upgrade
-# or
-fde-client upgrade
+docker run -d \
+  --name fde-server \
+  -p 3000:3000 \
+  -v "./server.yaml:/app/server.yaml:ro" \
+  -v "${HOME}/.ssh/fde_docker:/root/.ssh/id_rsa:ro" \
+  -v "./deploy-packages:/app/deploy-packages" \
+  -v "./logs:/app/logs" \
+  -e SSH_USER=yuchen \
+  -e SSH_HOST=host.docker.internal \
+  -e SSH_PORT=22 \
+  -e HOST_CONFIG_DIR="$(pwd)" \
+  -e NODE_ENV=production \
+  -e TZ=Asia/Shanghai \
+  --add-host host.docker.internal:host-gateway \
+  yuchenii/fde-server:latest
 ```
 
-The update command will:
+See [Docker Deployment Guide](docs/docker.md) for advanced configurations.
 
-- Check GitHub for the latest release
-- Download and install the new version
-- Ask if you want to update the other binary (server/client)
-- Show real-time download progress
+---
 
-### Uninstall
+## 📚 Documentation
 
-```bash
-# Uninstall FDE
-fde-server uninstall
-# or
-fde-client uninstall
+- **[Server API Reference](docs/server-api.md)**
+- **[Docker Deployment Guide](docs/docker.md)**
+- **[Path Resolution](docs/path-resolution.md)**
+- **[Changelog](CHANGELOG.md)**
+
+## 🏗️ Architecture
+
+```mermaid
+graph LR
+    subgraph Client["🖥️ fde-client"]
+        DC[deploy.yaml] --> CL[Load Config]
+        CL --> F["-e frontend"]
+        CL --> B["-e backend"]
+        F --> BF[Build Command]
+        B --> BB[Build Command]
+        BF --> ZF["Zip + Checksum"]
+        BB --> ZB["Zip + Checksum"]
+    end
+
+    ZF --> |Upload| Server
+    ZB --> |Upload| Server
+
+    subgraph Server["🖧 fde-server"]
+        SC[server.yaml] --> SL[Load Config]
+        SL --> FE[frontend]
+        SL --> BE[backend]
+        FE --> VT1["Verify Token + Checksum"]
+        BE --> VT2["Verify Token + Checksum"]
+        VT1 --> EX1["Extract → ./dist/web"]
+        VT2 --> EX2["Extract → ./dist/api"]
+        EX1 --> FD[Deploy Command]
+        EX2 --> BD[Deploy Command]
+    end
 ```
 
-The uninstall command will:
-
-- Remove the current binary
-- Scan for other FDE files and ask for confirmation
-- Work regardless of how you renamed the binaries
+---
 
 ## 🔧 Development
 
-### Prerequisites
+### 📋 Prerequisites
 
 - [Bun](https://bun.sh/) >= 1.0
 
-### Setup
+### 🛠️ Setup
 
 ```bash
 # Install dependencies
@@ -208,7 +277,7 @@ bun test
 bun run test:watch
 ```
 
-### Build
+### 🔨 Build
 
 ```bash
 # Build all platforms
@@ -224,34 +293,6 @@ bun run build:mac:arm64
 bun run build:linux:x64
 ```
 
-### Release Workflow
-
-#### Commit Changes
-
-Use the interactive commit tool to ensure your commit messages follow the standard convention:
-
-```bash
-bun run commit
-```
-
-#### Release
-
-To create a new release (bump version, generate changelog, create git tag, and release on GitHub):
-
-```bash
-bun run release
-```
-
-## 📝 API Endpoints
-
-| Endpoint         | Method | Description                    |
-| ---------------- | ------ | ------------------------------ |
-| `/ping`          | GET    | Health check                   |
-| `/health`        | GET    | Detailed health status         |
-| `/upload`        | POST   | File upload (FormData)         |
-| `/upload-stream` | POST   | Streaming upload with progress |
-| `/deploy`        | POST   | Execute deployment command     |
-
 ## 🧪 Testing
 
 ```bash
@@ -265,21 +306,7 @@ bun run test:coverage
 bun run test:watch
 ```
 
-Test coverage includes:
-
-- ✅ Server API endpoints
-- ✅ Authentication & authorization
-- ✅ File upload & streaming
-- ✅ Checksum verification
-- ✅ Log rotation
-- ✅ Archive creation
-- ✅ Config loading
-
-## 📚 Documentation
-
-- [Docker Deployment Guide](docs/docker.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
+---
 
 ## 🤝 Contributing
 
@@ -294,7 +321,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Built with [Bun](https://bun.sh/)
 - Progress bars powered by [cli-progress](https://github.com/npkgz/cli-progress)
 - Archive handling with [archiver](https://github.com/archiverjs/node-archiver)
-
----
-
-Made with ❤️ by [Yu Chen]
