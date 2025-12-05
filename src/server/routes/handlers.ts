@@ -145,7 +145,8 @@ export async function handleDeploy(
     // 执行部署命令
     await executeDeployCommand(
       validation.envConfig!.deployCommand,
-      validation.envConfig!.deployPath
+      validation.envConfig!.deployPath,
+      config.configDir
     );
 
     // 部署成功后检查并轮转日志文件

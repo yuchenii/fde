@@ -68,7 +68,7 @@ docker run -d \
   -e SSH_USER=yuchen \
   -e SSH_HOST=host.docker.internal \
   -e SSH_PORT=22 \
-  -e HOST_PROJECT_PATH="$(pwd)" \
+  -e HOST_CONFIG_DIR="$(pwd)" \
   -e NODE_ENV=production \
   -e TZ=Asia/Shanghai \
   --add-host host.docker.internal:host-gateway \
@@ -116,7 +116,7 @@ services:
       # Change to your host machine ssh port
       - SSH_PORT=22
       # Server config path, used to resolve relative paths in deployCommand
-      - HOST_PROJECT_PATH=/data/projects/app
+      - HOST_CONFIG_DIR=/data/projects/app
       - NODE_ENV=production
       - TZ=Asia/Shanghai
 
@@ -208,5 +208,5 @@ graph TD
     - 当 Server 接收到部署命令时，它需要操作宿主机资源（例如 `docker restart`）。
     - Server 读取挂载进来的 SSH 私钥 (`/root/.ssh/id_rsa`)。
     - Server 通过 SSH 连接到 `SSH_HOST` (即宿主机)。
-    - Server 在宿主机上执行 `cd HOST_PROJECT_PATH && <deploy_command>`。
+    - Server 在宿主机上执行 `cd HOST_CONFIG_DIR && <deploy_command>`。
     - 这样就实现了在容器内安全地控制宿主机环境。

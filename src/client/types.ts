@@ -16,4 +16,5 @@ export interface EnvironmentConfig {
 export interface ClientConfig {
   token?: string; // Outer-level token as fallback
   environments: Record<string, EnvironmentConfig>;
+  configDir: string; // 配置文件所在目录（用于解析相对路径）
 }

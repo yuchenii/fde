@@ -1,8 +1,10 @@
 import yaml from "js-yaml";
+import { dirname, resolve, isAbsolute } from "path";
 import type { ClientConfig } from "../types";
 
 /**
  * 读取客户端配置文件
+ * 配置文件中的相对路径将相对于配置文件所在目录解析
  */
 export async function loadConfig(configPath: string): Promise<ClientConfig> {
   try {
@@ -14,7 +16,11 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
       throw new Error("Invalid config: missing 'environments'");
     }
 
+    // 获取配置文件所在目录（用于解析相对路径）
+    const configDir = dirname(resolve(configPath));
+
     // Merge tokens: use outer-level token as fallback for environments
+    // 同时解析 localPath 中的相对路径
     const outerToken = config.token;
     for (const [envName, envConfig] of Object.entries(config.environments)) {
       if (!envConfig.authToken) {
@@ -26,7 +32,15 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
           );
         }
       }
+
+      // 解析 localPath 中的相对路径
+      if (envConfig.localPath && !isAbsolute(envConfig.localPath)) {
+        envConfig.localPath = resolve(configDir, envConfig.localPath);
+      }
     }
+
+    // 将 configDir 添加到配置中，供后续命令执行使用
+    config.configDir = configDir;
 
     return config;
   } catch (error) {

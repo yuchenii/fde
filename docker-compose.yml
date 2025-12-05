@@ -33,7 +33,7 @@ services:
       # Change to your host machine ssh port
       - SSH_PORT=22
       # Server config path, used to resolve relative paths in deployCommand
-      - HOST_PROJECT_PATH=/Users/yuchen/Documents/Code/Tool/fde
+      - HOST_CONFIG_DIR=/Users/yuchen/Documents/Code/Tool/fde
       - NODE_ENV=production
       - TZ=Asia/Shanghai
     

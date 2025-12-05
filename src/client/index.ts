@@ -21,6 +21,7 @@ import { uninstall } from "../utils/self-uninstall";
 async function deploy(
   env: string,
   envConfig: ClientConfig["environments"][string],
+  configDir: string,
   skipBuild: boolean = false,
   triggerOnly: boolean = false
 ) {
@@ -59,7 +60,7 @@ async function deploy(
 
     // 3. 执行构建命令
     if (!triggerOnly && !skipBuild && envConfig.buildCommand) {
-      await runBuildCommand(envConfig.buildCommand);
+      await runBuildCommand(envConfig.buildCommand, configDir);
     }
 
     // 4. 验证本地路径存在
@@ -122,9 +123,6 @@ async function deploy(
 }
 
 /**
- * 主函数入口
- */
-/**
  * 处理部署命令
  */
 async function handleDeployCommand(options: {
@@ -160,6 +158,7 @@ async function handleDeployCommand(options: {
     await deploy(
       options.env,
       envConfig,
+      config.configDir,
       options.skipBuild,
       options.triggerOnly
     );
