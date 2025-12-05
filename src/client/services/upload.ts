@@ -1,9 +1,9 @@
-import { stat, rm } from "fs/promises";
+import { stat } from "fs/promises";
 import { basename } from "path";
-import { createZipArchive } from "./archive";
-import type { ClientConfig } from "../types";
+import { withTempZip } from "./archive";
+import { parseJsonResponse } from "../utils/response";
 import FormData from "form-data";
-import { calculateChecksumFromFile } from "../../utils/checksum";
+import { calculateChecksumFromFile } from "@/utils/checksum";
 
 /**
  * 直接上传单个文件（不压缩）
@@ -66,13 +66,7 @@ export async function uploadFile(
     });
 
     const responseText = await response.text();
-    let result;
-
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      result = { raw: responseText };
-    }
+    const result = parseJsonResponse(responseText);
 
     if (!response.ok) {
       throw new Error(
@@ -104,19 +98,8 @@ export async function uploadDirectory(
   excludePatterns: string[] = [],
   skipChecksum: boolean = false
 ): Promise<any> {
-  const { tmpdir } = await import("os");
-  const { join } = await import("path");
-
-  const tempZipPath = join(tmpdir(), `deploy-${env}-${Date.now()}.zip`);
-
-  try {
-    console.log(`\n📁 Preparing directory for upload: ${dirPath}`);
-
-    // 压缩目录
-    await createZipArchive(dirPath, tempZipPath, excludePatterns);
-
-    // 使用 uploadFile 上传压缩包（需要解压）
-    const result = await uploadFile(
+  return withTempZip(dirPath, env, excludePatterns, async (tempZipPath) => {
+    return uploadFile(
       tempZipPath,
       serverUrl,
       authToken,
@@ -124,15 +107,5 @@ export async function uploadDirectory(
       skipChecksum,
       true // 目录压缩后需要解压
     );
-
-    return result;
-  } catch (error: any) {
-    console.error(`❌ Upload failed:`, error.message);
-    throw error;
-  } finally {
-    // 清理临时压缩文件
-    try {
-      await rm(tempZipPath, { force: true });
-    } catch {}
-  }
+  });
 }

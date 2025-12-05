@@ -1,3 +1,5 @@
+import { parseJsonResponse } from "../utils/response";
+
 /**
  * 调用部署接口（只需要环境参数）
  */
@@ -19,13 +21,7 @@ export async function triggerDeploy(
     });
 
     const responseText = await response.text();
-    let result;
-
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      result = { raw: responseText };
-    }
+    const result = parseJsonResponse(responseText);
 
     if (!response.ok) {
       throw new Error(

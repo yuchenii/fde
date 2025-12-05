@@ -1,6 +1,6 @@
 import { exec } from "child_process";
 import { promisify } from "util";
-import { parseScriptCommand } from "../../utils/command";
+import { parseScriptCommand } from "@/utils/command";
 
 const execAsync = promisify(exec);
 

@@ -8,10 +8,10 @@ import {
   handlePing,
   handleHealth,
 } from "./routes/handlers";
-import { handleUploadStream } from "./routes/stream-handlers";
-import { VERSION } from "../version";
-import { checkAndUpdate } from "../utils/self-update";
-import { uninstall } from "../utils/self-uninstall";
+import { handleUploadStream } from "./routes/streamHandlers";
+import { VERSION } from "@/version";
+import { checkAndUpdate } from "@/utils/selfUpdate";
+import { uninstall } from "@/utils/selfUninstall";
 import { logger } from "./utils/logger";
 import { isDockerEnvironment } from "./utils/env";
 
@@ -167,9 +167,7 @@ async function handleStartCommand(options: {
     const { spawn } = await import("child_process");
     const { writeFileSync, openSync, closeSync } = await import("fs");
     const { resolve } = await import("path");
-    const { rotateLogIfNeeded, getLogSize } = await import(
-      "./utils/log-rotate"
-    );
+    const { rotateLogIfNeeded, getLogSize } = await import("./utils/logRotate");
 
     // 加载配置以获取日志设置
     const { loadConfig } = await import("./config/loader");

@@ -1,7 +1,7 @@
 import { WriteStream, createWriteStream, existsSync, statSync } from "fs";
 import { mkdir } from "fs/promises";
 import { dirname } from "path";
-import { rotateLogIfNeeded } from "./log-rotate";
+import { rotateLogIfNeeded } from "./logRotate";
 
 /**
  * 日志轮转配置

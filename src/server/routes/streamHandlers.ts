@@ -1,7 +1,7 @@
 import type { ServerConfig } from "../types";
-import { validateRequest } from "../services/validation";
+import { validateRequest, verifyFileChecksum } from "../services/validation";
 import { extractAndDeploy, saveFile } from "../services/deployment";
-import { throttle } from "../../utils/throttle";
+import { throttle } from "@/utils/throttle";
 
 // 节流日志：每秒最多打印一次
 const throttledProgressLog = throttle((totalSize: number) => {
@@ -80,31 +80,11 @@ export async function handleUploadStream(
     console.log(`📦 Total received: ${(buffer.length / 1024).toFixed(2)} KB`);
 
     // 校验文件完整性
-    let checksumVerified = false;
-    if (expectedChecksum) {
-      console.log(`🔐 Verifying file checksum...`);
-      const { verifyChecksum } = await import("../../utils/checksum");
-      const isValid = verifyChecksum(buffer, expectedChecksum);
-
-      if (!isValid) {
-        console.error(`❌ Checksum verification failed!`);
-        return Response.json(
-          {
-            error: "Checksum verification failed",
-            message:
-              "File integrity check failed. The uploaded file may be corrupted.",
-          },
-          { status: 400 }
-        );
-      }
-
-      console.log(
-        `✅ Checksum verified: ${expectedChecksum.substring(0, 16)}...`
-      );
-      checksumVerified = true;
-    } else {
-      console.log(`⏭️  No checksum provided, skipping verification`);
+    const checksumResult = verifyFileChecksum(buffer, expectedChecksum);
+    if (checksumResult.error) {
+      return checksumResult.error;
     }
+    const checksumVerified = checksumResult.verified;
 
     // 根据标记决定处理方式
     if (shouldExtract) {

@@ -4,7 +4,8 @@ import { basename } from "path";
 import { request as httpRequest } from "http";
 import { request as httpsRequest } from "https";
 import cliProgress from "cli-progress";
-import { calculateChecksumFromFile } from "../../utils/checksum";
+import { calculateChecksumFromFile } from "@/utils/checksum";
+import { parseJsonResponse } from "../utils/response";
 
 /**
  * 流式上传文件（支持真实进度，兼容 Windows）
@@ -125,12 +126,7 @@ export async function uploadFileStream(
         progressBar.update(fileSize);
         progressBar.stop();
 
-        let result;
-        try {
-          result = JSON.parse(responseText);
-        } catch {
-          result = { raw: responseText };
-        }
+        const result = parseJsonResponse(responseText);
 
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           console.log(`✅ Upload completed successfully!`);
@@ -206,21 +202,10 @@ export async function uploadDirectoryStream(
   excludePatterns: string[] = [],
   skipChecksum: boolean = false
 ): Promise<any> {
-  const { createZipArchive } = await import("./archive");
-  const { rm } = await import("fs/promises");
-  const { tmpdir } = await import("os");
-  const { join } = await import("path");
+  const { withTempZip } = await import("./archive");
 
-  const tempZipPath = join(tmpdir(), `deploy-${env}-${Date.now()}.zip`);
-
-  try {
-    console.log(`\n📁 Preparing directory for upload: ${dirPath}`);
-
-    // 压缩目录
-    await createZipArchive(dirPath, tempZipPath, excludePatterns);
-
-    // 使用流式上传压缩文件（需要解压）
-    const result = await uploadFileStream(
+  return withTempZip(dirPath, env, excludePatterns, async (tempZipPath) => {
+    return uploadFileStream(
       tempZipPath,
       serverUrl,
       authToken,
@@ -228,15 +213,5 @@ export async function uploadDirectoryStream(
       skipChecksum,
       true // 目录压缩后需要解压
     );
-
-    return result;
-  } catch (error: any) {
-    console.error(`❌ Upload failed:`, error.message);
-    throw error;
-  } finally {
-    // 清理临时压缩文件
-    try {
-      await rm(tempZipPath, { force: true });
-    } catch {}
-  }
+  });
 }

@@ -5,7 +5,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import type { EnvironmentConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
-import { parseScriptCommand } from "../../utils/command";
+import { parseScriptCommand } from "@/utils/command";
 
 const execAsync = promisify(exec);
 

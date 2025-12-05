@@ -1,5 +1,5 @@
 import type { ServerConfig } from "../types";
-import { validateRequest } from "../services/validation";
+import { validateRequest, verifyFileChecksum } from "../services/validation";
 import {
   extractAndDeploy,
   saveFile,
@@ -54,31 +54,11 @@ export async function handleUpload(
     console.log(`🔍 Should extract: ${shouldExtract}`);
 
     // 校验文件完整性
-    let checksumVerified = false;
-    if (expectedChecksum) {
-      console.log(`🔐 Verifying file checksum...`);
-      const { verifyChecksum } = await import("../../utils/checksum");
-      const isValid = verifyChecksum(buffer, expectedChecksum);
-
-      if (!isValid) {
-        console.error(`❌ Checksum verification failed!`);
-        return Response.json(
-          {
-            error: "Checksum verification failed",
-            message:
-              "File integrity check failed. The uploaded file may be corrupted.",
-          },
-          { status: 400 }
-        );
-      }
-
-      console.log(
-        `✅ Checksum verified: ${expectedChecksum.substring(0, 16)}...`
-      );
-      checksumVerified = true;
-    } else {
-      console.log(`⏭️  No checksum provided, skipping verification`);
+    const checksumResult = verifyFileChecksum(buffer, expectedChecksum);
+    if (checksumResult.error) {
+      return checksumResult.error;
     }
+    const checksumVerified = checksumResult.verified;
 
     // 根据标记决定处理方式
     if (shouldExtract) {
@@ -127,7 +107,7 @@ export async function handleDeploy(
     // 获取认证token（保留在header）
     const authToken = req.headers.get("authorization");
 
-    console.log(`\n📨 Received upload request for env: ${env || "undefined"}`);
+    console.log(`\n📨 Received deploy request for env: ${env || "undefined"}`);
 
     // 验证请求
     const validation = validateRequest(env, authToken, config);
@@ -151,7 +131,7 @@ export async function handleDeploy(
 
     // 部署成功后检查并轮转日志文件
     try {
-      const { rotateLogIfNeeded } = await import("../utils/log-rotate");
+      const { rotateLogIfNeeded } = await import("../utils/logRotate");
       const { resolve } = await import("path");
 
       // 从配置获取日志路径和设置

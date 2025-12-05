@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "bun:test";
-import { rotateLogIfNeeded, getLogSize } from "../src/server/utils/log-rotate";
+import { rotateLogIfNeeded, getLogSize } from "../src/server/utils/logRotate";
 import { join } from "path";
 import { writeFile, rm } from "fs/promises";
 

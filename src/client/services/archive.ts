@@ -1,6 +1,8 @@
 import archiver from "archiver";
 import { createWriteStream } from "fs";
-import { basename } from "path";
+import { rm } from "fs/promises";
+import { basename, join } from "path";
+import { tmpdir } from "os";
 
 /**
  * 打包指定目录为 Zip 文件
@@ -66,4 +68,35 @@ export async function createZipArchive(
 
     archive.finalize();
   });
+}
+
+/**
+ * 创建临时 zip 文件并执行回调，完成后自动清理
+ * 用于统一目录上传的临时文件处理逻辑
+ *
+ * @param dirPath 要压缩的目录路径
+ * @param env 环境名称（用于生成临时文件名）
+ * @param excludePatterns 排除的文件模式
+ * @param callback 处理 zip 文件的回调函数
+ */
+export async function withTempZip<T>(
+  dirPath: string,
+  env: string,
+  excludePatterns: string[],
+  callback: (zipPath: string) => Promise<T>
+): Promise<T> {
+  const tempZipPath = join(tmpdir(), `deploy-${env}-${Date.now()}.zip`);
+
+  try {
+    console.log(`\n📁 Preparing directory for upload: ${dirPath}`);
+    await createZipArchive(dirPath, tempZipPath, excludePatterns);
+    return await callback(tempZipPath);
+  } finally {
+    // 清理临时压缩文件
+    try {
+      await rm(tempZipPath, { force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
 }

@@ -4,16 +4,16 @@ import chalk from "chalk";
 import { existsSync } from "fs";
 import { detectPathType } from "./utils/path";
 import { runBuildCommand } from "./services/build";
-import { checkServerConnection, checkServerHealth } from "./utils/server";
+import { checkServerConnection, checkServerHealth } from "./utils/healthCheck";
 import {
   uploadFileStream,
   uploadDirectoryStream,
-} from "./services/stream-upload";
+} from "./services/streamUpload";
 import { triggerDeploy } from "./services/deploy";
 import type { ClientConfig } from "./types";
-import { VERSION } from "../version";
-import { checkAndUpdate } from "../utils/self-update";
-import { uninstall } from "../utils/self-uninstall";
+import { VERSION } from "@/version";
+import { checkAndUpdate } from "@/utils/selfUpdate";
+import { uninstall } from "@/utils/selfUninstall";
 
 /**
  * 主部署流程

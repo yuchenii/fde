@@ -1,4 +1,44 @@
 import type { ServerConfig, EnvironmentConfig } from "../types";
+import { verifyChecksum } from "@/utils/checksum";
+
+/**
+ * 校验文件的 SHA256 校验和
+ * 如果未提供校验和则跳过验证
+ *
+ * @param buffer 文件数据
+ * @param expectedChecksum 期望的校验和（可为 null）
+ * @returns { verified: 是否已验证, error: 失败时的响应 }
+ */
+export function verifyFileChecksum(
+  buffer: Buffer,
+  expectedChecksum: string | null
+): { verified: boolean; error?: Response } {
+  if (!expectedChecksum) {
+    console.log(`⏭️  No checksum provided, skipping verification`);
+    return { verified: false };
+  }
+
+  console.log(`🔐 Verifying file checksum...`);
+  const isValid = verifyChecksum(buffer, expectedChecksum);
+
+  if (!isValid) {
+    console.error(`❌ Checksum verification failed!`);
+    return {
+      verified: false,
+      error: Response.json(
+        {
+          error: "Checksum verification failed",
+          message:
+            "File integrity check failed. The uploaded file may be corrupted.",
+        },
+        { status: 400 }
+      ),
+    };
+  }
+
+  console.log(`✅ Checksum verified: ${expectedChecksum.substring(0, 16)}...`);
+  return { verified: true };
+}
 
 /**
  * 验证请求的环境和 Token
