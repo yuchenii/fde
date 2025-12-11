@@ -4,11 +4,29 @@ import type { ServerConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
 
 /**
+ * Docker 环境下的路径解析
+ * - uploadPath: 相对于容器工作目录 (/app) 解析
+ * - configDir: 使用 HOST_CONFIG_DIR，供 deployCommand 通过 SSH 在宿主机执行
+ */
+function resolveDockerPaths(
+  config: ServerConfig,
+  configFileDir: string
+): ServerConfig {
+  for (const env of Object.values(config.environments)) {
+    if (env.uploadPath && !isAbsolute(env.uploadPath)) {
+      env.uploadPath = resolve("/app", env.uploadPath);
+    }
+  }
+  if (config.log?.path && !isAbsolute(config.log.path)) {
+    config.log.path = resolve("/app", config.log.path);
+  }
+  config.configDir = process.env.HOST_CONFIG_DIR || configFileDir;
+  return config;
+}
+
+/**
  * 在运行时读取并解析 YAML 配置文件
  * 配置文件中的相对路径将相对于配置文件所在目录解析
- *
- * Docker 环境下使用 HOST_CONFIG_DIR 作为基础路径，
- * 因为路径需要在宿主机上执行
  */
 export async function loadConfig(configPath: string): Promise<ServerConfig> {
   try {
@@ -21,13 +39,15 @@ export async function loadConfig(configPath: string): Promise<ServerConfig> {
       throw new Error("Invalid config: missing 'port' or 'environments'");
     }
 
-    // 确定基础路径：Docker 环境使用宿主机路径，普通环境使用配置文件目录
-    const isDocker = isDockerEnvironment();
-    const configDir = isDocker
-      ? process.env.HOST_CONFIG_DIR || dirname(resolve(configPath))
-      : dirname(resolve(configPath));
+    // 配置文件所在目录
+    const configDir = dirname(resolve(configPath));
 
-    // 解析 environments 中的相对路径
+    // Docker 环境使用单独的路径解析逻辑
+    if (isDockerEnvironment()) {
+      return resolveDockerPaths(config, configDir);
+    }
+
+    // 非 Docker 环境：所有路径相对于配置文件目录解析
     for (const env of Object.values(config.environments)) {
       if (env.uploadPath && !isAbsolute(env.uploadPath)) {
         env.uploadPath = resolve(configDir, env.uploadPath);
