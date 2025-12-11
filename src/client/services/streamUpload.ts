@@ -1,5 +1,5 @@
 import { stat, createReadStream } from "fs";
-import { stat as statAsync } from "fs/promises";
+import { stat as statAsync, open as openFile } from "fs/promises";
 import { basename } from "path";
 import { request as httpRequest } from "http";
 import { request as httpsRequest } from "https";
@@ -55,9 +55,16 @@ export async function uploadFileStream(
     eta: "0",
   });
 
+  // 在 Promise 外部打开文件句柄
+  const CHUNK_SIZE = 64 * 1024; // 64KB per chunk
+  const fileHandle = await openFile(filePath, "r");
+  const buffer = Buffer.alloc(CHUNK_SIZE);
+
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     let uploadedBytes = 0;
+    let bytesRead = 0;
+    let totalBytesWritten = 0;
 
     // 更新进度条的辅助函数
     const updateProgress = (bytes: number) => {
@@ -143,51 +150,57 @@ export async function uploadFileStream(
       });
     });
 
-    req.on("error", (error) => {
+    req.on("error", async (error) => {
+      await fileHandle.close().catch(() => {});
       progressBar.stop();
       console.error(`\n❌ Upload failed:`, error.message);
       reject(error);
     });
 
-    // 使用文件流 + drain 事件实现真实进度
-    const fileStream = createReadStream(filePath, {
-      highWaterMark: 64 * 1024, // 64KB chunks
-    });
+    // 手动分块读取文件并控制写入节奏
+    // 这确保进度条能够正确更新，而不受 OS 缓冲区影响
+    const writeNextChunk = async () => {
+      try {
+        const result = await fileHandle.read(buffer, 0, CHUNK_SIZE, bytesRead);
 
-    let bytesWritten = 0;
+        if (result.bytesRead === 0) {
+          // 文件读取完毕
+          await fileHandle.close();
+          req.end();
+          return;
+        }
 
-    fileStream.on("data", (chunk: Buffer | string) => {
-      const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      bytesWritten += chunkBuffer.length;
+        bytesRead += result.bytesRead;
+        const chunk = buffer.subarray(0, result.bytesRead);
 
-      // write 返回 false 表示缓冲区已满，需要等待 drain
-      const canContinue = req.write(chunkBuffer);
+        // 写入 chunk
+        const canContinue = req.write(chunk);
+        totalBytesWritten += result.bytesRead;
 
-      if (!canContinue) {
-        // 暂停文件读取，等待网络缓冲区清空
-        fileStream.pause();
+        // 更新进度
+        updateProgress(totalBytesWritten);
 
-        req.once("drain", () => {
-          // 网络缓冲区已清空，更新进度并继续读取
-          updateProgress(bytesWritten);
-          fileStream.resume();
-        });
-      } else {
-        // 可以继续写入，更新进度
-        updateProgress(bytesWritten);
+        if (canContinue) {
+          // 缓冲区未满，使用 setImmediate 让出事件循环后继续
+          // 这给进度条更新的机会
+          setImmediate(writeNextChunk);
+        } else {
+          // 缓冲区已满，等待 drain 事件
+          req.once("drain", () => {
+            setImmediate(writeNextChunk);
+          });
+        }
+      } catch (error: any) {
+        await fileHandle.close().catch(() => {});
+        progressBar.stop();
+        console.error(`\n❌ File read failed:`, error.message);
+        req.destroy();
+        reject(error);
       }
-    });
+    };
 
-    fileStream.on("end", () => {
-      req.end();
-    });
-
-    fileStream.on("error", (error) => {
-      progressBar.stop();
-      console.error(`\n❌ File read failed:`, error.message);
-      req.destroy();
-      reject(error);
-    });
+    // 开始写入
+    writeNextChunk();
   });
 }
 

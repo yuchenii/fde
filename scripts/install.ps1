@@ -2,7 +2,7 @@
 
 param(
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\FDE",
-    [ValidateSet("both", "server", "client")]
+    [ValidateSet("both", "server", "client", "")]
     [string]$Component = ""
 )
 
@@ -77,7 +77,7 @@ if ($InstallServer) {
     Write-Host "Downloading $SERVER_FILE..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri "$BASE_URL/$SERVER_FILE" -OutFile "$InstallDir\$SERVER_FILE"
     Rename-Item -Path "$InstallDir\$SERVER_FILE" -NewName "fde-server.exe" -Force
-    Write-Host "✓ Server installed" -ForegroundColor Green
+    Write-Host "Server installed" -ForegroundColor Green
 }
 
 if ($InstallClient) {
@@ -85,7 +85,7 @@ if ($InstallClient) {
     Write-Host "Downloading $CLIENT_FILE..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri "$BASE_URL/$CLIENT_FILE" -OutFile "$InstallDir\$CLIENT_FILE"
     Rename-Item -Path "$InstallDir\$CLIENT_FILE" -NewName "fde-client.exe" -Force
-    Write-Host "✓ Client installed" -ForegroundColor Green
+    Write-Host "Client installed" -ForegroundColor Green
 }
 
 # Add to PATH if not present
