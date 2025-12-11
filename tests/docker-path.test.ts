@@ -180,10 +180,14 @@ environments:
         "../src/server/services/deployment"
       );
 
-      // 不应该抛出错误
-      await expect(
-        executeDeployCommand("echo 'test output'", TEST_DIR, TEST_DIR)
-      ).resolves.toBeUndefined();
+      // 应该返回 stdout 和 stderr
+      const result = await executeDeployCommand(
+        "echo 'test output'",
+        TEST_DIR,
+        TEST_DIR
+      );
+      expect(result.stdout).toContain("test output");
+      expect(result.stderr).toBe("");
     });
 
     it("should execute command in correct directory", async () => {
@@ -192,10 +196,10 @@ environments:
       );
 
       // 对于非脚本命令（不以 ./ ../ / 开头），命令会在 process.cwd() 执行
-      // 这里只验证命令能正常执行
-      await expect(
-        executeDeployCommand("pwd", TEST_DIR, TEST_DIR)
-      ).resolves.toBeUndefined();
+      // 这里只验证命令能正常执行并返回结果
+      const result = await executeDeployCommand("pwd", TEST_DIR, TEST_DIR);
+      expect(result.stdout).toBeDefined();
+      expect(result.stderr).toBe("");
     });
 
     it("should handle script path ./scripts/xxx.sh correctly", async () => {
@@ -396,10 +400,10 @@ environments:
         "../src/server/services/deployment"
       );
 
-      // 空命令不应该抛出错误，直接返回
-      await expect(
-        executeDeployCommand("", TEST_DIR, TEST_DIR)
-      ).resolves.toBeUndefined();
+      // 空命令不应该抛出错误，直接返回空结果
+      const result = await executeDeployCommand("", TEST_DIR, TEST_DIR);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
     });
   });
 

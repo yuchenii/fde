@@ -5,6 +5,7 @@ import {
   saveFile,
   executeDeployCommand,
 } from "../services/deployment";
+import { VERSION } from "@/version";
 
 /**
  * POST /upload - 文件上传接口
@@ -189,7 +190,7 @@ export function handleHealth(config: ServerConfig): Response {
     status: "ok",
     uptime: process.uptime(),
     environments: Object.keys(config.environments),
-    version: "1.0.0",
+    version: VERSION,
     timestamp: new Date().toISOString(),
   });
 }
