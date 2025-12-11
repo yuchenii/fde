@@ -1,11 +1,8 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import { parseScriptCommand } from "@/utils/command";
 
-const execAsync = promisify(exec);
-
 /**
- * 执行构建命令
+ * 执行构建命令（实时输出）
  * @param command 构建命令
  * @param configDir 配置文件所在目录（用于解析相对路径脚本）
  */
@@ -31,13 +28,28 @@ export async function runBuildCommand(
     console.log(`📂 Working directory: ${cwd}`);
   }
 
-  try {
-    const { stdout, stderr } = await execAsync(finalCommand, { cwd });
-    if (stdout) console.log(stdout);
-    if (stderr) console.warn(stderr);
-    console.log("✅ Build command completed");
-  } catch (error: any) {
-    console.error(`❌ Build command failed:`, error.message);
-    throw error;
-  }
+  return new Promise((resolve, reject) => {
+    // 使用 stdio: "inherit" 直接继承终端，保留 TTY 特性（颜色、进度条等）
+    const child = spawn(finalCommand, {
+      cwd,
+      shell: true,
+      stdio: "inherit",
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        console.log("✅ Build command completed");
+        resolve();
+      } else {
+        const error = new Error(`Build command exited with code ${code}`);
+        console.error(`❌ Build command failed:`, error.message);
+        reject(error);
+      }
+    });
+
+    child.on("error", (error) => {
+      console.error(`❌ Build command failed:`, error.message);
+      reject(error);
+    });
+  });
 }
