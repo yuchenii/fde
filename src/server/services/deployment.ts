@@ -61,14 +61,15 @@ function getSshCommand(
  * @param deployCommand 部署命令
  * @param uploadPath 部署目录
  * @param configDir 配置文件所在目录（用于解析相对路径）
+ * @returns 命令执行结果（stdout 和 stderr）
  */
 export async function executeDeployCommand(
   deployCommand: string,
   uploadPath: string,
   configDir: string
-): Promise<void> {
+): Promise<{ stdout: string; stderr: string }> {
   if (!deployCommand) {
-    return;
+    return { stdout: "", stderr: "" };
   }
 
   // 准备执行的命令
@@ -105,9 +106,15 @@ export async function executeDeployCommand(
     if (stdout) console.log("Command output:", stdout);
     if (stderr) console.error("Command stderr:", stderr);
     console.log(`✅ Deploy command completed`);
-  } catch (error) {
+    return { stdout: stdout || "", stderr: stderr || "" };
+  } catch (error: any) {
     console.error(`❌ Deploy command failed:`, error);
-    throw error;
+    // 创建包含详细输出的错误对象
+    const detailedError = new Error(error.message || "Deploy command failed");
+    (detailedError as any).stdout = error.stdout || "";
+    (detailedError as any).stderr = error.stderr || "";
+    (detailedError as any).code = error.code;
+    throw detailedError;
   }
 }
 

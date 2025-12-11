@@ -123,7 +123,7 @@ export async function handleDeploy(
     }
 
     // 执行部署命令
-    await executeDeployCommand(
+    const deployResult = await executeDeployCommand(
       validation.envConfig!.deployCommand,
       validation.envConfig!.uploadPath,
       config.configDir
@@ -153,13 +153,18 @@ export async function handleDeploy(
       success: true,
       message: `Deployment to ${env} completed successfully`,
       uploadPath: validation.envConfig!.uploadPath,
+      stdout: deployResult.stdout,
+      stderr: deployResult.stderr,
     });
   } catch (error: any) {
     console.error(`❌ Server error:`, error);
     return Response.json(
       {
-        error: "Internal server error",
+        error: "Deploy command failed",
         details: error.message,
+        stdout: error.stdout || "",
+        stderr: error.stderr || "",
+        exitCode: error.code,
       },
       { status: 500 }
     );

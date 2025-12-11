@@ -24,11 +24,35 @@ export async function triggerDeploy(
     const result = parseJsonResponse(responseText);
 
     if (!response.ok) {
+      // 显示服务端脚本的详细输出
+      if (result.stdout || result.stderr) {
+        console.error(`\n📋 Deploy script output:`);
+        if (result.stdout) {
+          console.error(`\n--- stdout ---\n${result.stdout}`);
+        }
+        if (result.stderr) {
+          console.error(`\n--- stderr ---\n${result.stderr}`);
+        }
+        if (result.exitCode !== undefined) {
+          console.error(`\n--- exit code: ${result.exitCode} ---`);
+        }
+      }
       throw new Error(
         `Deployment failed with ${response.status}: ${
-          result.error || responseText
+          result.error || result.details || responseText
         }`
       );
+    }
+
+    // 成功时也显示脚本输出
+    if (result.stdout || result.stderr) {
+      console.log(`\n📋 Deploy script output:`);
+      if (result.stdout) {
+        console.log(`${result.stdout.trim()}`);
+      }
+      if (result.stderr) {
+        console.log(`${result.stderr.trim()}`);
+      }
     }
 
     return result;

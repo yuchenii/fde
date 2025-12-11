@@ -253,4 +253,54 @@ environments:
       expect(data.success).toBe(true);
     });
   });
+
+  describe("Deployment Failure", () => {
+    const FAIL_SERVER_URL = "http://localhost:3001";
+    const FAIL_TOKEN = "fail-test-token";
+    const FAIL_CONFIG_PATH = join(process.cwd(), "test-fail-config.yaml");
+    let failServer: Server<any>;
+
+    beforeAll(async () => {
+      // 创建会失败的部署命令配置
+      const configContent = `
+port: 3001
+token: "${FAIL_TOKEN}"
+environments:
+  fail-test:
+    uploadPath: "${TEST_DIR}/fail-test"
+    deployCommand: "echo 'Starting...' && echo 'Error occurred' >&2 && exit 1"
+`;
+      await writeFile(FAIL_CONFIG_PATH, configContent);
+      failServer = await startServer(FAIL_CONFIG_PATH);
+    });
+
+    afterAll(async () => {
+      if (failServer) {
+        failServer.stop();
+      }
+      await rm(FAIL_CONFIG_PATH, { force: true });
+    });
+
+    it("should return detailed error output when deploy command fails", async () => {
+      const response = await fetch(`${FAIL_SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: FAIL_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          env: "fail-test",
+        }),
+      });
+
+      expect(response.status).toBe(500);
+      const data = await response.json();
+
+      // 验证错误响应包含详细输出
+      expect(data.error).toBe("Deploy command failed");
+      expect(data.stdout).toContain("Starting...");
+      expect(data.stderr).toContain("Error occurred");
+      expect(data.exitCode).toBe(1);
+    });
+  });
 });
