@@ -1,6 +1,7 @@
 # Client Configuration
-# Optional: Outer-level token used when environment doesn't specify authToken
+# Optional: Outer-level defaults used when environment doesn't specify them
 token: "shared-secret-token"
+serverUrl: "http://localhost:3000"
 
 # Environment configurations
 environments:
@@ -19,7 +20,6 @@ environments:
     exclude: ["node_modules", ".git", "*.log"]
 
   test:
-    serverUrl: "http://localhost:3000"
     # authToken not specified, will use outer-level token "shared-secret-token"
     buildCommand: "echo 'Build test'"
     # Deployment directory or file
@@ -27,7 +27,6 @@ environments:
     exclude: ["node_modules", ".git"]
 
   frontend-test:
-    serverUrl: "http://localhost:3000"
     # authToken not specified, will use outer-level token "shared-secret-token"
     buildCommand: "echo 'Build frontend test'"
     # Deployment directory or file

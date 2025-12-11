@@ -19,10 +19,23 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
     // 获取配置文件所在目录（用于解析相对路径）
     const configDir = dirname(resolve(configPath));
 
-    // Merge tokens: use outer-level token as fallback for environments
-    // 同时解析 localPath 中的相对路径
+    // Merge outer-level defaults into environment configs
     const outerToken = config.token;
+    const outerServerUrl = config.serverUrl;
+
     for (const [envName, envConfig] of Object.entries(config.environments)) {
+      // Merge serverUrl
+      if (!envConfig.serverUrl) {
+        if (outerServerUrl) {
+          envConfig.serverUrl = outerServerUrl;
+        } else {
+          throw new Error(
+            `Missing serverUrl for environment '${envName}': neither environment-level 'serverUrl' nor outer-level 'serverUrl' is specified`
+          );
+        }
+      }
+
+      // Merge authToken
       if (!envConfig.authToken) {
         if (outerToken) {
           envConfig.authToken = outerToken;

@@ -72,10 +72,13 @@ fde-server start -d -c server.yaml
 On your **local machine** (where your code is), create a `deploy.yaml` file:
 
 ```yaml
+# Optional: Outer-level defaults
+token: "my-secret-token" # Global token fallback
+serverUrl: "http://your-server-ip:3000" # Global server URL fallback
+
 environments:
   prod:
-    serverUrl: "http://your-server-ip:3000"
-    authToken: "my-secret-token" # Must match server config
+    # authToken and serverUrl inherit from outer-level if not specified
     buildCommand: "npm run build" # Command to build your project
     localPath: "./dist" # Local folder to upload
 ```
@@ -121,7 +124,7 @@ fde-server --help
 # Deploy to specific environment
 fde-client deploy -e prod
 
-# Skip build step (upload only)
+# Skip build step (skip build command execution)
 fde-client deploy -e prod --skip-build
 
 # Trigger deployment command only (no build/upload)
@@ -171,21 +174,22 @@ fde-client --help
 
 #### Client Configuration (`deploy.yaml`)
 
-| Field          | Type     | Required | Default | Description                               |
-| :------------- | :------- | :------- | :------ | :---------------------------------------- |
-| `token`        | `string` | No       | -       | Global security token fallback.           |
-| `environments` | `object` | **Yes**  | -       | Dictionary of environment configurations. |
+| Field          | Type     | Required | Default | Description                                                  |
+| :------------- | :------- | :------- | :------ | :----------------------------------------------------------- |
+| `token`        | `string` | No       | -       | Global security token fallback.                              |
+| `serverUrl`    | `string` | No       | -       | Global server URL fallback. Used if env doesn't specify one. |
+| `environments` | `object` | **Yes**  | -       | Dictionary of environment configurations.                    |
 
 **Environment Object (`environments.<name>`):**
 
-| Field          | Type       | Required | Default        | Description                                                                  |
-| :------------- | :--------- | :------- | :------------- | :--------------------------------------------------------------------------- |
-| `serverUrl`    | `string`   | **Yes**  | -              | Full URL of the FDE server (e.g., `http://10.0.0.1:3000`).                   |
-| `authToken`    | `string`   | No       | Global `token` | Auth token matching the server's environment token.                          |
-| `localPath`    | `string`   | **Yes**  | -              | Local directory or file to deploy. Resolved relative to config file.         |
-| `buildCommand` | `string`   | No       | -              | Command to run locally before upload (e.g., `npm run build`).                |
-| `exclude`      | `string[]` | No       | -              | List of glob patterns to exclude from upload (e.g., `node_modules`, `.git`). |
-| `skipChecksum` | `boolean`  | No       | `false`        | If `true`, skips SHA256 checksum calculation (not recommended).              |
+| Field          | Type       | Required | Default            | Description                                                                  |
+| :------------- | :--------- | :------- | :----------------- | :--------------------------------------------------------------------------- |
+| `serverUrl`    | `string`   | No       | Global `serverUrl` | Full URL of the FDE server. Falls back to outer-level `serverUrl`.           |
+| `authToken`    | `string`   | No       | Global `token`     | Auth token matching the server's environment token.                          |
+| `localPath`    | `string`   | **Yes**  | -                  | Local directory or file to deploy. Resolved relative to config file.         |
+| `buildCommand` | `string`   | No       | -                  | Command to run locally before upload (e.g., `npm run build`).                |
+| `exclude`      | `string[]` | No       | -                  | List of glob patterns to exclude from upload (e.g., `node_modules`, `.git`). |
+| `skipChecksum` | `boolean`  | No       | `false`            | If `true`, skips SHA256 checksum calculation (not recommended).              |
 
 ### 🐳 Docker Support
 

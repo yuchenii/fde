@@ -2,7 +2,7 @@
  * 环境配置接口
  */
 export interface EnvironmentConfig {
-  serverUrl: string;
+  serverUrl: string; // Required after merging with outer-level serverUrl
   authToken?: string; // Optional, falls back to outer-level token
   localPath: string;
   buildCommand?: string;
@@ -15,6 +15,7 @@ export interface EnvironmentConfig {
  */
 export interface ClientConfig {
   token?: string; // Outer-level token as fallback
+  serverUrl?: string; // Outer-level serverUrl as fallback
   environments: Record<string, EnvironmentConfig>;
   configDir: string; // 配置文件所在目录（用于解析相对路径）
 }
