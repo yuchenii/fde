@@ -8,6 +8,7 @@ FDE Server 提供了一组 RESTful API，用于文件上传、部署触发、健
 | ---------------- | ------ | ------------------------------ |
 | `/ping`          | GET    | Health check                   |
 | `/health`        | GET    | Detailed health status         |
+| `/verify`        | POST   | Token verification             |
 | `/upload`        | POST   | File upload (FormData)         |
 | `/upload-stream` | POST   | Streaming upload with progress |
 | `/deploy`        | POST   | Execute deployment command     |
@@ -62,7 +63,40 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 }
 ```
 
-### 3. 文件上传 (Standard Upload)
+### 3. Token 验证 (Verify)
+
+在执行 build 和 upload 之前验证 token 是否正确，避免耗时的 build 完成后才发现认证失败。
+
+- **URL**: `/verify`
+- **Method**: `POST`
+- **Auth Required**: Yes
+- **Content-Type**: `application/json`
+
+**请求体 (JSON):**
+
+```json
+{
+  "env": "dev" // 目标环境名称
+}
+```
+
+**响应:**
+
+- **成功 (`200 OK`)**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Authentication verified for environment 'dev'",
+    "env": "dev"
+  }
+  ```
+
+- **失败**:
+  - `400 Bad Request`: 环境不存在
+  - `403 Forbidden`: Token 无效
+
+### 4. 文件上传 (Standard Upload)
 
 使用 `multipart/form-data` 格式上传文件。适用于小文件或不支持流式上传的客户端。
 
@@ -101,7 +135,7 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
   - `403 Forbidden`: Token 无效
   - `500 Internal Server Error`: 服务器内部错误
 
-### 4. 流式上传 (Stream Upload)
+### 5. 流式上传 (Stream Upload)
 
 通过请求体直接流式传输文件数据。适用于大文件上传，支持进度监控。
 
@@ -126,7 +160,7 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 
 与 `/upload` 接口响应结构一致。
 
-### 5. 触发部署 (Trigger Deploy)
+### 6. 触发部署 (Trigger Deploy)
 
 仅触发配置好的部署脚本，不上传新文件。
 

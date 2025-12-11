@@ -4,7 +4,11 @@ import chalk from "chalk";
 import { existsSync } from "fs";
 import { detectPathType } from "./utils/path";
 import { runBuildCommand } from "./services/build";
-import { checkServerConnection, checkServerHealth } from "./utils/healthCheck";
+import {
+  checkServerConnection,
+  checkServerHealth,
+  verifyAuthToken,
+} from "./utils/healthCheck";
 import {
   uploadFileStream,
   uploadDirectoryStream,
@@ -58,12 +62,29 @@ async function deploy(
       process.exit(1);
     }
 
-    // 3. 执行构建命令
+    // 3. 验证 Token 是否正确（在 build 之前，避免 build 完成后才发现 token 错误）
+    const tokenResult = await verifyAuthToken(
+      envConfig.serverUrl,
+      envConfig.authToken,
+      env
+    );
+    if (!tokenResult.valid) {
+      console.error(chalk.red(`\n❌ Error: Authentication failed`));
+      console.error(chalk.red(`   ${tokenResult.error}`));
+      console.error(
+        chalk.yellow(
+          `\n💡 Please check your authToken configuration and ensure it matches the server's token.`
+        )
+      );
+      process.exit(1);
+    }
+
+    // 4. 执行构建命令
     if (!triggerOnly && !skipBuild && envConfig.buildCommand) {
       await runBuildCommand(envConfig.buildCommand, configDir);
     }
 
-    // 4. 验证本地路径存在
+    // 5. 验证本地路径存在
     if (!triggerOnly) {
       if (!existsSync(envConfig.localPath)) {
         console.error(chalk.red(`\n❌ Error: Local path does not exist!`));
@@ -76,13 +97,13 @@ async function deploy(
         process.exit(1);
       }
 
-      // 5. 检测路径类型
+      // 6. 检测路径类型
       const pathType = await detectPathType(envConfig.localPath);
       console.log(
         chalk.gray(`\n🔍 Detected path type: ${pathType.toUpperCase()}`)
       );
 
-      // 6. 根据路径类型选择上传方式（使用流式上传，支持进度条）
+      // 7. 根据路径类型选择上传方式（使用流式上传，支持进度条）
       if (pathType === "directory") {
         // 目录：压缩后流式上传
         await uploadDirectoryStream(
@@ -105,14 +126,14 @@ async function deploy(
       }
     }
 
-    // 7. 触发部署
+    // 8. 触发部署
     const result = await triggerDeploy(
       envConfig.serverUrl,
       env,
       envConfig.authToken
     );
 
-    // 8. 显示结果
+    // 9. 显示结果
     console.log(chalk.blue("\n📊 Deployment Result:"));
     console.log(JSON.stringify(result, null, 2));
     console.log(chalk.green(`\n🎉 Deployment to '${env}' completed!`));

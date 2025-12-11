@@ -109,6 +109,54 @@ environments:
     });
   });
 
+  describe("Token Verification", () => {
+    it("should verify valid token", async () => {
+      const response = await fetch(`${SERVER_URL}/verify`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test" }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.env).toBe("test");
+    });
+
+    it("should reject invalid token", async () => {
+      const response = await fetch(`${SERVER_URL}/verify`, {
+        method: "POST",
+        headers: {
+          authorization: "wrong-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test" }),
+      });
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toContain("token");
+    });
+
+    it("should reject unknown environment", async () => {
+      const response = await fetch(`${SERVER_URL}/verify`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "unknown" }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain("environment");
+    });
+  });
+
   describe("File Upload", () => {
     it("should upload a file successfully", async () => {
       const testContent = "Hello, World!";

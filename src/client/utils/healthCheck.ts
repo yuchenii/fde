@@ -64,3 +64,54 @@ export async function checkServerHealth(serverUrl: string): Promise<any> {
     return null;
   }
 }
+
+/**
+ * 验证认证 Token（在 build 之前调用）
+ * 确保 token 正确，避免 build 完成后上传时才发现 token 错误
+ */
+export async function verifyAuthToken(
+  serverUrl: string,
+  authToken: string,
+  env: string
+): Promise<{ valid: boolean; error?: string }> {
+  try {
+    console.log(`🔐 Verifying authentication token...`);
+
+    const response = await fetch(`${serverUrl}/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: authToken,
+      },
+      body: JSON.stringify({ env }),
+      signal: AbortSignal.timeout(10000), // 10秒超时
+    });
+
+    if (response.ok) {
+      console.log(`✅ Authentication verified`);
+      return { valid: true };
+    }
+
+    const data = (await response
+      .json()
+      .catch(() => ({ error: undefined }))) as { error?: string };
+    const errorMessage =
+      data.error || `Server responded with ${response.status}`;
+    console.error(`❌ Token verification failed: ${errorMessage}`);
+    return { valid: false, error: errorMessage };
+  } catch (error: any) {
+    if (error.name === "TimeoutError") {
+      return { valid: false, error: "Token verification timeout (10s)" };
+    } else if (error.code === "ECONNREFUSED") {
+      return {
+        valid: false,
+        error: "Connection refused - is the server running?",
+      };
+    } else {
+      return {
+        valid: false,
+        error: `Token verification failed: ${error.message}`,
+      };
+    }
+  }
+}

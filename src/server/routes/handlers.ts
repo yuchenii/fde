@@ -188,3 +188,49 @@ export function handleHealth(config: ServerConfig): Response {
     timestamp: new Date().toISOString(),
   });
 }
+
+/**
+ * POST /verify - 验证环境和 Token（用于 build 前预检）
+ */
+export async function handleVerify(
+  req: Request,
+  config: ServerConfig
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as { env: string };
+    const { env } = body;
+    const authToken = req.headers.get("authorization");
+
+    console.log(`\n🔐 Received verify request for env: ${env || "undefined"}`);
+
+    // 验证请求
+    const validation = validateRequest(env, authToken, config);
+
+    if (!validation.valid) {
+      console.error(`❌ Verification failed: ${validation.error}`);
+      return Response.json(
+        { error: validation.error },
+        {
+          status: validation.error?.includes("token") ? 403 : 400,
+        }
+      );
+    }
+
+    console.log(`✅ Verification passed for env: ${env}`);
+
+    return Response.json({
+      success: true,
+      message: `Authentication verified for environment '${env}'`,
+      env: env,
+    });
+  } catch (error: any) {
+    console.error(`❌ Verify error:`, error);
+    return Response.json(
+      {
+        error: "Verification failed",
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}

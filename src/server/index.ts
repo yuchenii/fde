@@ -7,6 +7,7 @@ import {
   handleDeploy,
   handlePing,
   handleHealth,
+  handleVerify,
 } from "./routes/handlers";
 import { handleUploadStream } from "./routes/streamHandlers";
 import { VERSION } from "@/version";
@@ -109,6 +110,10 @@ export async function startServer(configPath: string) {
 
       "/health": {
         GET: () => handleHealth(config),
+      },
+
+      "/verify": {
+        POST: async (req: Request) => handleVerify(req, config),
       },
 
       // 全局捕获 - 404 兜底，处理所有未匹配的路由
