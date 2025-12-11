@@ -104,7 +104,7 @@ export async function handleUploadStream(
       fileSize: buffer.length,
       checksumVerified,
       extracted: shouldExtract,
-      deployPath: validation.envConfig!.deployPath,
+      uploadPath: validation.envConfig!.uploadPath,
     });
   } catch (error: any) {
     console.error(`❌ Upload error:`, error);

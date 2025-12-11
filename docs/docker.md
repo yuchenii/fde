@@ -38,7 +38,7 @@ docker load -i ./fde-server.tar
 
 ## 2. 服务端目录结构
 
-容器内部的关键目录结构如下，server.yaml 中的 deployPath 需要与挂载的 deploy-packages 目录一致：
+容器内部的关键目录结构如下，server.yaml 中的 uploadPath 需要与挂载的 deploy-packages 目录一致：
 
 ```
 /app
@@ -103,7 +103,7 @@ services:
       - ./server.yaml:/app/server.yaml:ro
       # SSH key for docker to connect to host machine
       - ${HOME}/.ssh/fde_docker:/root/.ssh/id_rsa:ro
-      # Deploy packages, must be same as deployPath in server.yaml
+      # Deploy packages, must be same as uploadPath in server.yaml
       - ./deploy-packages:/app/deploy-packages
       # Logs
       - ./logs:/app/logs
@@ -145,13 +145,13 @@ environments:
   # 测试环境
   test:
     token: "test-token" # 覆盖全局 Token
-    deployPath: "./deploy-packages/test" # 部署包路径
+    uploadPath: "./deploy-packages/test" # 部署包路径
     deployCommand: "./scripts/deploy-test.sh" # 部署脚本或命令
 
   # 生产环境
   prod:
     token: "prod-token"
-    deployPath: "./deploy-packages/prod"
+    uploadPath: "./deploy-packages/prod"
     deployCommand: "./scripts/deploy-prod.sh"
 ```
 

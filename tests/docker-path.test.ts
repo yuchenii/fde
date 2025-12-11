@@ -58,13 +58,13 @@ describe("Docker Environment Path Resolution", () => {
 
   // ==================== Config Loader Tests ====================
   describe("Config Loader Path Resolution", () => {
-    it("should resolve relative deployPath to absolute path", async () => {
+    it("should resolve relative uploadPath to absolute path", async () => {
       const configContent = `
 port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy-packages/test"
+    uploadPath: "./deploy-packages/test"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -72,8 +72,8 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(TEST_CONFIG_PATH);
 
-      expect(isAbsolute(config.environments.test.deployPath)).toBe(true);
-      expect(config.environments.test.deployPath).toBe(
+      expect(isAbsolute(config.environments.test.uploadPath)).toBe(true);
+      expect(config.environments.test.uploadPath).toBe(
         join(TEST_DIR, "deploy-packages/test")
       );
     });
@@ -86,7 +86,7 @@ log:
   path: "./logs/fde-server.log"
 environments:
   test:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -103,7 +103,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -121,7 +121,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "${absolutePath}"
+    uploadPath: "${absolutePath}"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -129,7 +129,7 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(TEST_CONFIG_PATH);
 
-      expect(config.environments.test.deployPath).toBe(absolutePath);
+      expect(config.environments.test.uploadPath).toBe(absolutePath);
     });
   });
 
@@ -145,7 +145,7 @@ environments:
       const { saveFile } = await import("../src/server/services/deployment");
       const testContent = Buffer.from("test content");
       const envConfig = {
-        deployPath: DEPLOY_DIR,
+        uploadPath: DEPLOY_DIR,
         deployCommand: "echo test",
       };
 
@@ -163,7 +163,7 @@ environments:
       const newDeployDir = join(TEST_DIR, "new-deploy-dir");
       const testContent = Buffer.from("new content");
       const envConfig = {
-        deployPath: newDeployDir,
+        uploadPath: newDeployDir,
         deployCommand: "echo test",
       };
 
@@ -242,7 +242,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "echo test"
 `;
       await writeFile(SUBDIR_CONFIG_PATH, configContent);
@@ -250,8 +250,8 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(SUBDIR_CONFIG_PATH);
 
-      // deployPath 应该相对于 SUBDIR，不是 cwd
-      expect(config.environments.test.deployPath).toBe(join(SUBDIR, "deploy"));
+      // uploadPath 应该相对于 SUBDIR，不是 cwd
+      expect(config.environments.test.uploadPath).toBe(join(SUBDIR, "deploy"));
       expect(config.configDir).toBe(SUBDIR);
     });
 
@@ -265,7 +265,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "../../../deploy"
+    uploadPath: "../../../deploy"
     deployCommand: "echo test"
 `;
       await writeFile(deepConfigPath, configContent);
@@ -274,7 +274,7 @@ environments:
       const config = await loadConfig(deepConfigPath);
 
       // ../../../deploy 从 a/b/c 返回到 TEST_DIR
-      expect(config.environments.test.deployPath).toBe(
+      expect(config.environments.test.uploadPath).toBe(
         join(TEST_DIR, "deploy")
       );
     });
@@ -288,13 +288,13 @@ port: 3000
 token: "test-token"
 environments:
   prod:
-    deployPath: "./deploy-packages/prod"
+    uploadPath: "./deploy-packages/prod"
     deployCommand: "./scripts/deploy-prod.sh"
   test:
-    deployPath: "./deploy-packages/test"
+    uploadPath: "./deploy-packages/test"
     deployCommand: "echo test"
   staging:
-    deployPath: "/absolute/staging/path"
+    uploadPath: "/absolute/staging/path"
     deployCommand: "npm run staging"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -302,13 +302,13 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(TEST_CONFIG_PATH);
 
-      expect(config.environments.prod.deployPath).toBe(
+      expect(config.environments.prod.uploadPath).toBe(
         join(TEST_DIR, "deploy-packages/prod")
       );
-      expect(config.environments.test.deployPath).toBe(
+      expect(config.environments.test.uploadPath).toBe(
         join(TEST_DIR, "deploy-packages/test")
       );
-      expect(config.environments.staging.deployPath).toBe(
+      expect(config.environments.staging.uploadPath).toBe(
         "/absolute/staging/path"
       );
     });
@@ -322,7 +322,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "../parent-deploy"
+    uploadPath: "../parent-deploy"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -330,10 +330,10 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(TEST_CONFIG_PATH);
 
-      expect(config.environments.test.deployPath).toBe(
+      expect(config.environments.test.uploadPath).toBe(
         join(TEST_DIR, "..", "parent-deploy")
       );
-      expect(isAbsolute(config.environments.test.deployPath)).toBe(true);
+      expect(isAbsolute(config.environments.test.uploadPath)).toBe(true);
     });
 
     it("should handle path with spaces", async () => {
@@ -342,7 +342,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy packages/test"
+    uploadPath: "./deploy packages/test"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -350,7 +350,7 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(TEST_CONFIG_PATH);
 
-      expect(config.environments.test.deployPath).toBe(
+      expect(config.environments.test.uploadPath).toBe(
         join(TEST_DIR, "deploy packages/test")
       );
     });
@@ -361,7 +361,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./a/b/c/d/deploy"
+    uploadPath: "./a/b/c/d/deploy"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -369,7 +369,7 @@ environments:
       const { loadConfig } = await import("../src/server/config/loader");
       const config = await loadConfig(TEST_CONFIG_PATH);
 
-      expect(config.environments.test.deployPath).toBe(
+      expect(config.environments.test.uploadPath).toBe(
         join(TEST_DIR, "a/b/c/d/deploy")
       );
     });
@@ -380,7 +380,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "echo test"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);
@@ -427,16 +427,16 @@ port: 3000
 token: "test-token"
 environments:
   script:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "./scripts/deploy.sh"
   npm:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "npm run deploy"
   absolute:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "/opt/scripts/deploy.sh"
   complex:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "cd /app && npm run build && ./deploy.sh"
 `;
       await writeFile(TEST_CONFIG_PATH, configContent);

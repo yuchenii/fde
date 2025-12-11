@@ -20,7 +20,7 @@ services:
       - ./server.yaml:/app/server.yaml:ro
       # SSH key for docker to connect to host machine
       - ${HOME}/.ssh/fde_docker:/root/.ssh/id_rsa:ro
-      # Deploy packages, must be same as deployPath in server.yaml
+      # Deploy packages, must be same as uploadPath in server.yaml
       - ./deploy-packages:/app/deploy-packages
       # Logs
       - ./logs:/app/logs

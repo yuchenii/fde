@@ -3,7 +3,7 @@
  */
 export interface EnvironmentConfig {
   token?: string; // Optional, falls back to outer-level token
-  deployPath: string;
+  uploadPath: string;
   deployCommand: string;
 }
 

@@ -21,7 +21,7 @@ port: 3000
 token: "${TEST_TOKEN}"
 environments:
   test:
-    deployPath: "${TEST_DIR}/test"
+    uploadPath: "${TEST_DIR}/test"
     deployCommand: "echo 'test deployed'"
 `;
     await writeFile(TEST_CONFIG_PATH, configContent);

@@ -78,7 +78,7 @@ export async function handleUpload(
       fileSize: buffer.length,
       checksumVerified,
       extracted: shouldExtract,
-      deployPath: validation.envConfig!.deployPath,
+      uploadPath: validation.envConfig!.uploadPath,
     });
   } catch (error: any) {
     console.error(`❌ Upload error:`, error);
@@ -125,7 +125,7 @@ export async function handleDeploy(
     // 执行部署命令
     await executeDeployCommand(
       validation.envConfig!.deployCommand,
-      validation.envConfig!.deployPath,
+      validation.envConfig!.uploadPath,
       config.configDir
     );
 
@@ -152,7 +152,7 @@ export async function handleDeploy(
     return Response.json({
       success: true,
       message: `Deployment to ${env} completed successfully`,
-      deployPath: validation.envConfig!.deployPath,
+      uploadPath: validation.envConfig!.uploadPath,
     });
   } catch (error: any) {
     console.error(`❌ Server error:`, error);

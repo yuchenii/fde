@@ -92,7 +92,7 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
     "fileSize": 102400,
     "checksumVerified": true, // 如果提供了 checksum
     "extracted": true,
-    "deployPath": "/var/www/app"
+    "uploadPath": "/var/www/app"
   }
   ```
 
@@ -151,7 +151,7 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
   {
     "success": true,
     "message": "Deployment to dev completed successfully",
-    "deployPath": "/var/www/app"
+    "uploadPath": "/var/www/app"
   }
   ```
 

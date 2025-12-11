@@ -22,7 +22,7 @@ environments:
     # Token must match the client's authToken
     token: "prod-secret-key-super-secure"
     # Deployment directory
-    deployPath: "./deploy-packages/prod"
+    uploadPath: "./deploy-packages/prod"
     # Deployment command (can be a single line command or a script call)
     # Single line command: deployCommand: "nginx -s reload"
     # Script call: deployCommand: "./deploy.sh"
@@ -30,10 +30,10 @@ environments:
 
   test:
     # token not specified, will use outer-level token "shared-secret-token"
-    deployPath: "./deploy-packages/test"
+    uploadPath: "./deploy-packages/test"
     deployCommand: "echo 'test deployed'"
 
   frontend-test:
     # token not specified, will use outer-level token "shared-secret-token"
-    deployPath: "./deploy-packages/test"
+    uploadPath: "./deploy-packages/test"
     deployCommand: "echo 'test deployed'"

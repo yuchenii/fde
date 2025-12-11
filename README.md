@@ -51,7 +51,7 @@ port: 3000 # Port to listen on
 environments:
   prod:
     token: "my-secret-token" # Security token for this environment
-    deployPath: "/var/www/html" # Where files will be extracted
+    uploadPath: "/var/www/html" # Where files will be extracted
     deployCommand: "nginx -s reload" # Command to run after extraction
 ```
 
@@ -166,7 +166,7 @@ fde-client --help
 | Field           | Type     | Required | Default        | Description                                                                  |
 | :-------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------- |
 | `token`         | `string` | No       | Global `token` | Environment-specific token. Overrides global token.                          |
-| `deployPath`    | `string` | **Yes**  | -              | Absolute path or path relative to config file where files will be extracted. |
+| `uploadPath`    | `string` | **Yes**  | -              | Absolute path or path relative to config file where files will be extracted. |
 | `deployCommand` | `string` | **Yes**  | -              | Command executed after extraction.                                           |
 
 #### Client Configuration (`deploy.yaml`)

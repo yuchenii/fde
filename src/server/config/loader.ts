@@ -29,8 +29,8 @@ export async function loadConfig(configPath: string): Promise<ServerConfig> {
 
     // 解析 environments 中的相对路径
     for (const env of Object.values(config.environments)) {
-      if (env.deployPath && !isAbsolute(env.deployPath)) {
-        env.deployPath = resolve(configDir, env.deployPath);
+      if (env.uploadPath && !isAbsolute(env.uploadPath)) {
+        env.uploadPath = resolve(configDir, env.uploadPath);
       }
     }
 

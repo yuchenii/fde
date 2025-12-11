@@ -54,7 +54,7 @@ environments:
   prod:
     # Use environment variable, not hardcoded token
     token: ${DEPLOY_TOKEN}
-    deployPath: "/var/www/html"
+    uploadPath: "/var/www/html"
     deployCommand: "nginx -s reload"
 ```
 

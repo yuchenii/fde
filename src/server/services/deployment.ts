@@ -13,11 +13,11 @@ const execAsync = promisify(exec);
  * 获取 SSH 执行命令
  * 如果配置了 SSH 环境变量，返回 SSH 命令和执行目录
  *
- * 注意：deployPath 和 configDir 已在 loader 中使用 HOST_CONFIG_DIR 转换为宿主机绝对路径
+ * 注意：uploadPath 和 configDir 已在 loader 中使用 HOST_CONFIG_DIR 转换为宿主机绝对路径
  */
 function getSshCommand(
   deployCommand: string,
-  deployPath: string,
+  uploadPath: string,
   configDir: string
 ): { command: string; cwd: string } {
   const sshHost = process.env.SSH_HOST;
@@ -28,7 +28,7 @@ function getSshCommand(
   console.log(`🐳 Docker environment detected, using SSH to execute on host`);
 
   // 处理 deployCommand 中的相对路径
-  // deployPath 和 configDir 已是宿主机绝对路径
+  // uploadPath 和 configDir 已是宿主机绝对路径
   const { command: finalDeployCommand, scriptDir } = parseScriptCommand(
     deployCommand,
     configDir
@@ -41,10 +41,10 @@ function getSshCommand(
   let innerCommand: string;
   if (scriptDir) {
     // 脚本文件：先 cd 到脚本目录，再执行脚本
-    innerCommand = `mkdir -p '${deployPath}' && cd '${scriptDir}' && ${finalDeployCommand}`;
+    innerCommand = `mkdir -p '${uploadPath}' && cd '${scriptDir}' && ${finalDeployCommand}`;
   } else {
     // 普通命令：在 configDir（项目根目录）执行
-    innerCommand = `mkdir -p '${deployPath}' && cd '${configDir}' && ${finalDeployCommand}`;
+    innerCommand = `mkdir -p '${uploadPath}' && cd '${configDir}' && ${finalDeployCommand}`;
   }
 
   const command = `ssh -p ${sshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -i ${privateKeyPath} ${sshUser}@${sshHost} "${innerCommand.replace(
@@ -59,12 +59,12 @@ function getSshCommand(
 /**
  * 执行部署命令
  * @param deployCommand 部署命令
- * @param deployPath 部署目录
+ * @param uploadPath 部署目录
  * @param configDir 配置文件所在目录（用于解析相对路径）
  */
 export async function executeDeployCommand(
   deployCommand: string,
-  deployPath: string,
+  uploadPath: string,
   configDir: string
 ): Promise<void> {
   if (!deployCommand) {
@@ -73,7 +73,7 @@ export async function executeDeployCommand(
 
   // 准备执行的命令
   let commandToExecute = deployCommand;
-  let cwd = deployPath;
+  let cwd = uploadPath;
 
   if (isDockerEnvironment()) {
     if (!process.env.SSH_HOST || !process.env.SSH_USER) {
@@ -83,7 +83,7 @@ export async function executeDeployCommand(
     }
 
     // 获取 SSH 命令
-    const sshCommand = getSshCommand(deployCommand, deployPath, configDir);
+    const sshCommand = getSshCommand(deployCommand, uploadPath, configDir);
     commandToExecute = sshCommand.command;
     cwd = sshCommand.cwd;
   } else {
@@ -120,7 +120,7 @@ export async function extractAndDeploy(
   envConfig: EnvironmentConfig,
   env: string
 ): Promise<void> {
-  const deployPath = envConfig.deployPath;
+  const uploadPath = envConfig.uploadPath;
   const tempZipPath = join("/tmp", `deploy-${env}-${Date.now()}.zip`);
 
   try {
@@ -129,14 +129,14 @@ export async function extractAndDeploy(
     console.log(`📦 Zip file saved to ${tempZipPath}`);
 
     // 确保部署目录存在
-    if (!existsSync(deployPath)) {
-      await mkdir(deployPath, { recursive: true });
-      console.log(`📁 Created deploy directory: ${deployPath}`);
+    if (!existsSync(uploadPath)) {
+      await mkdir(uploadPath, { recursive: true });
+      console.log(`📁 Created deploy directory: ${uploadPath}`);
     }
 
     // 解压 Zip 文件
-    console.log(`📂 Extracting to ${deployPath}...`);
-    await execAsync(`unzip -o ${tempZipPath} -d ${deployPath}`);
+    console.log(`📂 Extracting to ${uploadPath}...`);
+    await execAsync(`unzip -o ${tempZipPath} -d ${uploadPath}`);
     console.log(`✅ Files extracted successfully`);
 
     // 清理临时文件
@@ -156,17 +156,17 @@ export async function saveFile(
   envConfig: EnvironmentConfig,
   env: string
 ): Promise<void> {
-  const deployPath = envConfig.deployPath;
+  const uploadPath = envConfig.uploadPath;
 
   try {
     // 确保部署目录存在
-    if (!existsSync(deployPath)) {
-      await mkdir(deployPath, { recursive: true });
-      console.log(`📁 Created deploy directory: ${deployPath}`);
+    if (!existsSync(uploadPath)) {
+      await mkdir(uploadPath, { recursive: true });
+      console.log(`📁 Created deploy directory: ${uploadPath}`);
     }
 
     // 保存文件
-    const filePath = join(deployPath, fileName);
+    const filePath = join(uploadPath, fileName);
     await Bun.write(filePath, fileBuffer);
     console.log(`💾 File saved to: ${filePath}`);
     console.log(`📄 File size: ${(fileBuffer.length / 1024).toFixed(2)} KB`);

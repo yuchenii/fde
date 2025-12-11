@@ -79,13 +79,13 @@ describe("Server Config Loader Tests", () => {
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 
-  it("should resolve relative deployPath to absolute path", async () => {
+  it("should resolve relative uploadPath to absolute path", async () => {
     const configContent = `
 port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy-test"
+    uploadPath: "./deploy-test"
     deployCommand: "echo test"
 `;
     await writeFile(TEST_CONFIG_PATH, configContent);
@@ -93,8 +93,8 @@ environments:
     const config = await loadServerConfig(TEST_CONFIG_PATH);
     const env = config.environments.test;
 
-    expect(isAbsolute(env.deployPath)).toBe(true);
-    expect(env.deployPath).toBe(join(TEST_DIR, "deploy-test"));
+    expect(isAbsolute(env.uploadPath)).toBe(true);
+    expect(env.uploadPath).toBe(join(TEST_DIR, "deploy-test"));
   });
 
   it("should resolve relative log.path to absolute path", async () => {
@@ -105,7 +105,7 @@ log:
   path: "./logs/server.log"
 environments:
   test:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "echo test"
 `;
     await writeFile(TEST_CONFIG_PATH, configContent);
@@ -123,7 +123,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "./deploy"
+    uploadPath: "./deploy"
     deployCommand: "echo test"
 `;
     await writeFile(TEST_CONFIG_PATH, configContent);
@@ -141,7 +141,7 @@ port: 3000
 token: "test-token"
 environments:
   test:
-    deployPath: "${absolutePath}"
+    uploadPath: "${absolutePath}"
     deployCommand: "echo test"
 `;
     await writeFile(TEST_CONFIG_PATH, configContent);
@@ -149,7 +149,7 @@ environments:
     const config = await loadServerConfig(TEST_CONFIG_PATH);
     const env = config.environments.test;
 
-    expect(env.deployPath).toBe(absolutePath);
+    expect(env.uploadPath).toBe(absolutePath);
   });
 });
 
