@@ -74,17 +74,27 @@ $BASE_URL = "https://github.com/$REPO/releases/download/$LATEST_VERSION"
 
 if ($InstallServer) {
     $SERVER_FILE = "fde-server-$OS-$ARCH.exe"
+    $ServerTarget = "$InstallDir\fde-server.exe"
     Write-Host "Downloading $SERVER_FILE..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri "$BASE_URL/$SERVER_FILE" -OutFile "$InstallDir\$SERVER_FILE"
-    Rename-Item -Path "$InstallDir\$SERVER_FILE" -NewName "fde-server.exe" -Force
+    # Remove existing file before rename (Rename-Item -Force doesn't overwrite)
+    if (Test-Path $ServerTarget) {
+        Remove-Item -Path $ServerTarget -Force
+    }
+    Rename-Item -Path "$InstallDir\$SERVER_FILE" -NewName "fde-server.exe"
     Write-Host "Server installed" -ForegroundColor Green
 }
 
 if ($InstallClient) {
     $CLIENT_FILE = "fde-client-$OS-$ARCH.exe"
+    $ClientTarget = "$InstallDir\fde-client.exe"
     Write-Host "Downloading $CLIENT_FILE..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri "$BASE_URL/$CLIENT_FILE" -OutFile "$InstallDir\$CLIENT_FILE"
-    Rename-Item -Path "$InstallDir\$CLIENT_FILE" -NewName "fde-client.exe" -Force
+    # Remove existing file before rename (Rename-Item -Force doesn't overwrite)
+    if (Test-Path $ClientTarget) {
+        Remove-Item -Path $ClientTarget -Force
+    }
+    Rename-Item -Path "$InstallDir\$CLIENT_FILE" -NewName "fde-client.exe"
     Write-Host "Client installed" -ForegroundColor Green
 }
 
