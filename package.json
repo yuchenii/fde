@@ -1,6 +1,6 @@
 {
   "name": "fde",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Lightweight deployment system built with Bun and TypeScript",
   "type": "module",
   "main": "src/server/index.ts",
