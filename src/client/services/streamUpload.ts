@@ -171,7 +171,10 @@ export async function uploadFileStream(
         }
 
         bytesRead += result.bytesRead;
-        const chunk = buffer.subarray(0, result.bytesRead);
+        // Create a copy of the chunk data to avoid buffer reuse issues
+        // subarray creates a view into the reused buffer, which could be overwritten
+        // before req.write() finishes processing the data
+        const chunk = Buffer.from(buffer.subarray(0, result.bytesRead));
 
         // 写入 chunk
         const canContinue = req.write(chunk);

@@ -233,6 +233,59 @@ environments:
       const data = await response.json();
       expect(data.success).toBe(true);
     });
+
+    it("should verify checksum when provided", async () => {
+      const testContent = "Checksum test content";
+      const blob = new Blob([testContent]);
+
+      // Calculate the SHA256 checksum of the content
+      const encoder = new TextEncoder();
+      const data = encoder.encode(testContent);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const checksum = hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const response = await fetch(
+        `${SERVER_URL}/upload-stream?env=test&fileName=checksum-test.txt&shouldExtract=false&checksum=${checksum}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: TEST_TOKEN,
+          },
+          body: blob,
+        }
+      );
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.success).toBe(true);
+      expect(result.checksumVerified).toBe(true);
+    });
+
+    it("should reject upload with invalid checksum", async () => {
+      const testContent = "Invalid checksum test";
+      const blob = new Blob([testContent]);
+
+      // Use an invalid checksum
+      const invalidChecksum = "0".repeat(64);
+
+      const response = await fetch(
+        `${SERVER_URL}/upload-stream?env=test&fileName=bad-checksum.txt&shouldExtract=false&checksum=${invalidChecksum}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: TEST_TOKEN,
+          },
+          body: blob,
+        }
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain("Checksum");
+    });
   });
 
   describe("Deployment", () => {

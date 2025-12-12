@@ -1,5 +1,5 @@
 import type { ServerConfig, EnvironmentConfig } from "../types";
-import { verifyChecksum } from "@/utils/checksum";
+import { verifyChecksum, calculateChecksum } from "@/utils/checksum";
 
 /**
  * 校验文件的 SHA256 校验和
@@ -19,10 +19,17 @@ export function verifyFileChecksum(
   }
 
   console.log(`🔐 Verifying file checksum...`);
-  const isValid = verifyChecksum(buffer, expectedChecksum);
+  console.log(`📦 Received buffer size: ${buffer.length} bytes`);
+  const actualChecksum = calculateChecksum(buffer);
+  console.log(`📋 Expected checksum: ${expectedChecksum.substring(0, 16)}...`);
+  console.log(`📋 Actual checksum:   ${actualChecksum.substring(0, 16)}...`);
+
+  const isValid = actualChecksum === expectedChecksum;
 
   if (!isValid) {
     console.error(`❌ Checksum verification failed!`);
+    console.error(`   Expected: ${expectedChecksum}`);
+    console.error(`   Actual:   ${actualChecksum}`);
     return {
       verified: false,
       error: Response.json(
@@ -30,6 +37,9 @@ export function verifyFileChecksum(
           error: "Checksum verification failed",
           message:
             "File integrity check failed. The uploaded file may be corrupted.",
+          expected: expectedChecksum,
+          actual: actualChecksum,
+          bufferSize: buffer.length,
         },
         { status: 400 }
       ),
