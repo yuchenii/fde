@@ -29,6 +29,11 @@ jobs:
       - name: Build All Binaries
         run: bun run build:all
 
+      - name: Build Windows Installer
+        uses: joncloud/makensis-action@v4
+        with:
+          script-file: scripts/installer.nsi
+
       - name: Generate Checksums
         run: |
           cd dist

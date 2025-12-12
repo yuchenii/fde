@@ -20,6 +20,7 @@
     }
   },
   "hooks": {
-    "after:bump": "echo 'Version bumped to ${version}'"
+    "before:init": "bun test",
+    "after:bump": "bun run scripts/update-installer-version.ts ${version}"
   }
 }

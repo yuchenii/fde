@@ -38,6 +38,7 @@ function getSshCommand(
   // -o StrictHostKeyChecking=no 避免首次连接交互
   // -o UserKnownHostsFile=/dev/null 避免写入 known_hosts
   // -o IdentitiesOnly=yes 避免尝试所有 key 导致 Too many authentication failures
+  // -o LogLevel=ERROR 只显示错误，隐藏警告信息（如首次添加known_hosts的警告）
   let innerCommand: string;
   if (scriptDir) {
     // 脚本文件：先 cd 到脚本目录，再执行脚本
@@ -47,7 +48,7 @@ function getSshCommand(
     innerCommand = `mkdir -p '${uploadPath}' && cd '${configDir}' && ${finalDeployCommand}`;
   }
 
-  const command = `ssh -p ${sshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -i ${privateKeyPath} ${sshUser}@${sshHost} "${innerCommand.replace(
+  const command = `ssh -p ${sshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o LogLevel=ERROR -i ${privateKeyPath} ${sshUser}@${sshHost} "${innerCommand.replace(
     /"/g,
     '\\"'
   )}"`;
