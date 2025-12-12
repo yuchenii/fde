@@ -189,7 +189,6 @@ export function handleHealth(config: ServerConfig): Response {
   return Response.json({
     status: "ok",
     uptime: process.uptime(),
-    environments: Object.keys(config.environments),
     version: VERSION,
     timestamp: new Date().toISOString(),
   });

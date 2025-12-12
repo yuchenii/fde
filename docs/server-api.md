@@ -58,7 +58,6 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 {
   "status": "ok",
   "uptime": 123.45,
-  "environments": ["dev", "prod"],
   "version": "1.0.0",
   "timestamp": "2023-10-27T10:00:00.000Z"
 }

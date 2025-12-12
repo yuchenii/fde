@@ -55,7 +55,6 @@ environments:
       const data = await response.json();
       expect(data.status).toBe("ok");
       expect(data.version).toBeDefined();
-      expect(data.environments).toBeArray();
     });
   });
 
