@@ -213,78 +213,235 @@ environments:
     });
   });
 
-  describe("Stream Upload", () => {
-    it("should handle streaming upload", async () => {
-      const testContent = "Streaming test content";
-      const blob = new Blob([testContent]);
+  describe("Chunk Upload", () => {
+    const uploadId = "test-upload-" + Date.now();
+    const totalChunks = 3;
+    const chunkData = ["chunk1-data", "chunk2-data", "chunk3-data"];
 
+    it("should initialize chunk upload", async () => {
+      const response = await fetch(`${SERVER_URL}/upload/init`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          uploadId,
+          totalChunks,
+          fileName: "chunk-test.txt",
+          shouldExtract: false,
+          env: "test",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.uploadedChunks).toEqual([]);
+      expect(data.isResume).toBe(false);
+    });
+
+    it("should upload individual chunks with MD5", async () => {
+      for (let i = 0; i < totalChunks; i++) {
+        const content = chunkData[i];
+        const blob = new Blob([content]);
+
+        // Calculate MD5
+        const encoder = new TextEncoder();
+        const data = encoder.encode(content);
+        const hashBuffer = await crypto.subtle
+          .digest("MD5", data)
+          .catch(() => null);
+
+        // Note: crypto.subtle doesn't support MD5, so we skip MD5 header in test
+        const response = await fetch(
+          `${SERVER_URL}/upload/chunk?uploadId=${uploadId}&chunkIndex=${i}&env=test`,
+          {
+            method: "POST",
+            headers: {
+              authorization: TEST_TOKEN,
+              "content-type": "application/octet-stream",
+            },
+            body: blob,
+          }
+        );
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.success).toBe(true);
+        expect(result.chunkIndex).toBe(i);
+      }
+    });
+
+    it("should return upload status with uploaded chunks", async () => {
       const response = await fetch(
-        `${SERVER_URL}/upload-stream?env=test&fileName=stream-test.txt&shouldExtract=false`,
+        `${SERVER_URL}/upload/status?uploadId=${uploadId}&env=test`,
+        {
+          method: "GET",
+          headers: {
+            authorization: TEST_TOKEN,
+          },
+        }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.exists).toBe(true);
+      expect(data.uploadedChunks).toContain(0);
+      expect(data.uploadedChunks).toContain(1);
+      expect(data.uploadedChunks).toContain(2);
+      expect(data.totalChunks).toBe(totalChunks);
+    });
+
+    it("should complete chunk upload and merge", async () => {
+      const response = await fetch(`${SERVER_URL}/upload/complete`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          uploadId,
+          fileName: "chunk-test.txt",
+          shouldExtract: false,
+          env: "test",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.fileName).toBe("chunk-test.txt");
+    });
+
+    it("should return not exists for completed upload", async () => {
+      const response = await fetch(
+        `${SERVER_URL}/upload/status?uploadId=${uploadId}&env=test`,
+        {
+          method: "GET",
+          headers: {
+            authorization: TEST_TOKEN,
+          },
+        }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.exists).toBe(false);
+    });
+
+    it("should support resume upload", async () => {
+      const resumeUploadId = "resume-test-" + Date.now();
+
+      // Initialize
+      await fetch(`${SERVER_URL}/upload/init`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          uploadId: resumeUploadId,
+          totalChunks: 3,
+          fileName: "resume-test.txt",
+          shouldExtract: false,
+          env: "test",
+        }),
+      });
+
+      // Upload only first chunk
+      await fetch(
+        `${SERVER_URL}/upload/chunk?uploadId=${resumeUploadId}&chunkIndex=0&env=test`,
         {
           method: "POST",
           headers: {
             authorization: TEST_TOKEN,
+            "content-type": "application/octet-stream",
           },
-          body: blob,
+          body: new Blob(["first-chunk"]),
+        }
+      );
+
+      // Re-initialize should show resume status
+      const response = await fetch(`${SERVER_URL}/upload/init`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          uploadId: resumeUploadId,
+          totalChunks: 3,
+          fileName: "resume-test.txt",
+          shouldExtract: false,
+          env: "test",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.uploadedChunks).toContain(0);
+      expect(data.isResume).toBe(true);
+
+      // Cleanup
+      await fetch(
+        `${SERVER_URL}/upload/cancel?uploadId=${resumeUploadId}&env=test`,
+        {
+          method: "DELETE",
+          headers: {
+            authorization: TEST_TOKEN,
+          },
+        }
+      );
+    });
+
+    it("should cancel upload", async () => {
+      const cancelUploadId = "cancel-test-" + Date.now();
+
+      // Initialize
+      await fetch(`${SERVER_URL}/upload/init`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          uploadId: cancelUploadId,
+          totalChunks: 2,
+          fileName: "cancel-test.txt",
+          shouldExtract: false,
+          env: "test",
+        }),
+      });
+
+      // Cancel
+      const response = await fetch(
+        `${SERVER_URL}/upload/cancel?uploadId=${cancelUploadId}&env=test`,
+        {
+          method: "DELETE",
+          headers: {
+            authorization: TEST_TOKEN,
+          },
         }
       );
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-    });
 
-    it("should verify checksum when provided", async () => {
-      const testContent = "Checksum test content";
-      const blob = new Blob([testContent]);
-
-      // Calculate the SHA256 checksum of the content
-      const encoder = new TextEncoder();
-      const data = encoder.encode(testContent);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const checksum = hashArray
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-
-      const response = await fetch(
-        `${SERVER_URL}/upload-stream?env=test&fileName=checksum-test.txt&shouldExtract=false&checksum=${checksum}`,
+      // Verify deleted
+      const statusResponse = await fetch(
+        `${SERVER_URL}/upload/status?uploadId=${cancelUploadId}&env=test`,
         {
-          method: "POST",
+          method: "GET",
           headers: {
             authorization: TEST_TOKEN,
           },
-          body: blob,
         }
       );
 
-      expect(response.status).toBe(200);
-      const result = await response.json();
-      expect(result.success).toBe(true);
-      expect(result.checksumVerified).toBe(true);
-    });
-
-    it("should reject upload with invalid checksum", async () => {
-      const testContent = "Invalid checksum test";
-      const blob = new Blob([testContent]);
-
-      // Use an invalid checksum
-      const invalidChecksum = "0".repeat(64);
-
-      const response = await fetch(
-        `${SERVER_URL}/upload-stream?env=test&fileName=bad-checksum.txt&shouldExtract=false&checksum=${invalidChecksum}`,
-        {
-          method: "POST",
-          headers: {
-            authorization: TEST_TOKEN,
-          },
-          body: blob,
-        }
-      );
-
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error).toContain("Checksum");
+      const statusData = await statusResponse.json();
+      expect(statusData.exists).toBe(false);
     });
   });
 

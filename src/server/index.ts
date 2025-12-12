@@ -9,7 +9,14 @@ import {
   handleHealth,
   handleVerify,
 } from "./routes/handlers";
-import { handleUploadStream } from "./routes/streamHandlers";
+import {
+  handleUploadStatus,
+  handleUploadInit,
+  handleUploadChunk,
+  handleUploadComplete,
+  handleUploadCancel,
+} from "./routes/chunkHandlers";
+import { startCleanupScheduler } from "./services/chunkStorage";
 import { VERSION } from "@/version";
 import { checkAndUpdate } from "@/utils/selfUpdate";
 import { uninstall } from "@/utils/selfUninstall";
@@ -92,10 +99,6 @@ export async function startServer(configPath: string) {
     // 路由按特异性顺序匹配：精确路由 > 参数路由 > 通配符路由 > 全局捕获
     routes: {
       // 精确路由 - 最具体的路由放在前面
-      "/upload-stream": {
-        POST: async (req: Request) => handleUploadStream(req, config),
-      },
-
       "/upload": {
         POST: async (req: Request) => handleUpload(req, config),
       },
@@ -114,6 +117,27 @@ export async function startServer(configPath: string) {
 
       "/verify": {
         POST: async (req: Request) => handleVerify(req, config),
+      },
+
+      // 分片上传路由
+      "/upload/status": {
+        GET: async (req: Request) => handleUploadStatus(req, config),
+      },
+
+      "/upload/init": {
+        POST: async (req: Request) => handleUploadInit(req, config),
+      },
+
+      "/upload/chunk": {
+        POST: async (req: Request) => handleUploadChunk(req, config),
+      },
+
+      "/upload/complete": {
+        POST: async (req: Request) => handleUploadComplete(req, config),
+      },
+
+      "/upload/cancel": {
+        DELETE: async (req: Request) => handleUploadCancel(req, config),
       },
 
       // 全局捕获 - 404 兜底，处理所有未匹配的路由
@@ -140,6 +164,9 @@ export async function startServer(configPath: string) {
       );
     },
   });
+
+  // 启动分片上传清理调度器
+  startCleanupScheduler();
 
   console.log(
     chalk.green(`✅ Server is running at http://localhost:${server.port}`)

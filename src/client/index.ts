@@ -10,9 +10,9 @@ import {
   verifyAuthToken,
 } from "./utils/healthCheck";
 import {
-  uploadFileStream,
-  uploadDirectoryStream,
-} from "./services/streamUpload";
+  uploadFileChunked,
+  uploadDirectoryChunked,
+} from "./services/chunkUpload";
 import { triggerDeploy } from "./services/deploy";
 import type { ClientConfig } from "./types";
 import { VERSION } from "@/version";
@@ -103,10 +103,10 @@ async function deploy(
         chalk.gray(`\n🔍 Detected path type: ${pathType.toUpperCase()}`)
       );
 
-      // 7. 根据路径类型选择上传方式（使用流式上传，支持进度条）
+      // 7. 根据路径类型选择上传方式（使用分片上传，支持断点续传）
       if (pathType === "directory") {
-        // 目录：压缩后流式上传
-        await uploadDirectoryStream(
+        // 目录：压缩后分片上传
+        await uploadDirectoryChunked(
           envConfig.localPath,
           envConfig.serverUrl,
           envConfig.authToken,
@@ -115,8 +115,8 @@ async function deploy(
           envConfig.skipChecksum || false
         );
       } else {
-        // 单文件：流式上传
-        await uploadFileStream(
+        // 单文件：分片上传
+        await uploadFileChunked(
           envConfig.localPath,
           envConfig.serverUrl,
           envConfig.authToken,
