@@ -106,6 +106,39 @@ export function isDeploying(env: string): boolean {
 }
 
 /**
+ * 检查是否应该拒绝新部署
+ * 防止反向代理/网络层重复请求导致的重复部署
+ * 冷却期：部署完成后 5 秒内不接受新的部署请求
+ */
+export function shouldRejectNewDeploy(env: string): {
+  reject: boolean;
+  reason?: string;
+} {
+  const state = getState(env);
+
+  // 正在部署中
+  if (state.running) {
+    return { reject: true, reason: "Deployment already in progress" };
+  }
+
+  // 检查冷却期（5秒）
+  if (state.lastResult) {
+    const cooldownMs = 5000;
+    const elapsed = Date.now() - state.lastResult.endTime.getTime();
+    if (elapsed < cooldownMs) {
+      return {
+        reject: true,
+        reason: `Deployment cooldown (${((cooldownMs - elapsed) / 1000).toFixed(
+          1
+        )}s remaining)`,
+      };
+    }
+  }
+
+  return { reject: false };
+}
+
+/**
  * 获取部署状态
  */
 export function getDeployStatus(env: string): {

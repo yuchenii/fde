@@ -669,6 +669,11 @@ environments:
   });
 
   describe("SSE Reconnection", () => {
+    // 等待冷却期结束
+    beforeAll(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5500));
+    }, 10000);
+
     it("should include event ids in SSE stream", async () => {
       const response = await fetch(`${SERVER_URL}/deploy`, {
         method: "POST",
@@ -741,6 +746,39 @@ environments:
       // 部署已完成，应该返回 done 事件
       expect(fullText).toContain("event: done");
       expect(fullText).toContain('"success":true');
-    });
+    }, 15000);
+
+    it("should reject concurrent deploy without Last-Event-ID with 409", async () => {
+      const deployRes = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: true }),
+      });
+
+      // 读取完所有输出
+      const reader = deployRes.body?.getReader();
+      while (true) {
+        const { done } = await reader!.read();
+        if (done) break;
+      }
+
+      // 立即发起第二个部署（无 Last-Event-ID，应该被拒绝）
+      const concurrentRes = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: true }),
+      });
+
+      // 应该返回 409 Conflict
+      expect(concurrentRes.status).toBe(409);
+      const data = await concurrentRes.json();
+      expect(data.error).toContain("cooldown");
+    }, 15000);
   });
 });

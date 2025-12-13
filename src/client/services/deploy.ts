@@ -39,6 +39,12 @@ export async function triggerDeploy(
           const json = JSON.parse(text);
           errorMsg = json.error || json.details || text;
         } catch {}
+
+        // 409 Conflict: 并发部署冲突
+        if (response.status === 409) {
+          throw new Error(`⚠️ 部署冲突: ${errorMsg}\n请等待当前部署完成后再试`);
+        }
+
         throw new Error(
           `Deployment failed with ${response.status}: ${errorMsg}`
         );

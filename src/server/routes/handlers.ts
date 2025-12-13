@@ -12,6 +12,7 @@ import {
   finishDeploy,
   getOutputsFrom,
   isDeploying,
+  shouldRejectNewDeploy,
   getDeployStatus,
   getLatestOutputId,
 } from "../services/deployState";
@@ -148,6 +149,13 @@ export async function handleDeploy(
       if (isReconnect) {
         const fromId = parseInt(lastEventId, 10) || 0;
         return handleDeployResume(env!, fromId, config);
+      }
+
+      // 检查是否有并发部署或冷却期（没有 Last-Event-ID 时检查）
+      const rejectCheck = shouldRejectNewDeploy(env!);
+      if (rejectCheck.reject) {
+        console.log(`❌ ${rejectCheck.reason} for ${env}, rejecting request`);
+        return Response.json({ error: rejectCheck.reason }, { status: 409 });
       }
 
       // 新部署
