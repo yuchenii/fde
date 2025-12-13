@@ -35,13 +35,13 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
         }
       }
 
-      // Merge authToken
-      if (!envConfig.authToken) {
+      // Merge token
+      if (!envConfig.token) {
         if (outerToken) {
-          envConfig.authToken = outerToken;
+          envConfig.token = outerToken;
         } else {
           throw new Error(
-            `Missing token for environment '${envName}': neither environment-level 'authToken' nor outer-level 'token' is specified`
+            `Missing token for environment '${envName}': neither environment-level 'token' nor outer-level 'token' is specified`
           );
         }
       }

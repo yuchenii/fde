@@ -10,7 +10,7 @@ environments:
     serverUrl: "http://localhost:3000"
     # This token overrides the outer-level token for prod environment
     # Token must match the server.yaml prod.token
-    authToken: "prod-secret-key-super-secure"
+    token: "prod-secret-key-super-secure"
     # Build command (can be a single line command or a script call)
     # Single line command: buildCommand: "pnpm run build"
     # Script call: buildCommand: "./scripts/build-prod.sh"
@@ -20,14 +20,14 @@ environments:
     exclude: ["node_modules", ".git", "*.log"]
 
   test:
-    # authToken not specified, will use outer-level token "shared-secret-token"
+    # token not specified, will use outer-level token "shared-secret-token"
     buildCommand: "echo 'Build test'"
     # Deployment directory or file
     localPath: "./README.md"
     exclude: ["node_modules", ".git"]
 
   frontend-test:
-    # authToken not specified, will use outer-level token "shared-secret-token"
+    # token not specified, will use outer-level token "shared-secret-token"
     buildCommand: "echo 'Build frontend test'"
     # Deployment directory or file
     localPath: "./README.md"

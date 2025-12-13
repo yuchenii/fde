@@ -7,7 +7,7 @@ import { runBuildCommand } from "./services/build";
 import {
   checkServerConnection,
   checkServerHealth,
-  verifyAuthToken,
+  verifyToken,
 } from "./utils/healthCheck";
 import {
   uploadFileChunked,
@@ -37,8 +37,8 @@ async function deploy(
   }
 
   try {
-    // 1. 验证 authToken 已配置
-    if (!envConfig.authToken) {
+    // 1. 验证 token 已配置
+    if (!envConfig.token) {
       console.error(
         chalk.red(
           `\n❌ Error: Missing authentication token for environment '${env}'`
@@ -46,7 +46,7 @@ async function deploy(
       );
       console.error(
         chalk.yellow(
-          `   Please specify 'authToken' in the environment or 'token' at the outer level.`
+          `   Please specify 'token' in the environment or 'token' at the outer level.`
         )
       );
       process.exit(1);
@@ -63,9 +63,9 @@ async function deploy(
     }
 
     // 3. 验证 Token 是否正确（在 build 之前，避免 build 完成后才发现 token 错误）
-    const tokenResult = await verifyAuthToken(
+    const tokenResult = await verifyToken(
       envConfig.serverUrl,
-      envConfig.authToken,
+      envConfig.token,
       env
     );
     if (!tokenResult.valid) {
@@ -73,7 +73,7 @@ async function deploy(
       console.error(chalk.red(`   ${tokenResult.error}`));
       console.error(
         chalk.yellow(
-          `\n💡 Please check your authToken configuration and ensure it matches the server's token.`
+          `\n💡 Please check your token configuration and ensure it matches the server's token.`
         )
       );
       process.exit(1);
@@ -109,7 +109,7 @@ async function deploy(
         await uploadDirectoryChunked(
           envConfig.localPath,
           envConfig.serverUrl,
-          envConfig.authToken,
+          envConfig.token,
           env,
           envConfig.exclude || [],
           envConfig.skipChecksum || false
@@ -119,7 +119,7 @@ async function deploy(
         await uploadFileChunked(
           envConfig.localPath,
           envConfig.serverUrl,
-          envConfig.authToken,
+          envConfig.token,
           env,
           envConfig.skipChecksum || false
         );
@@ -130,7 +130,7 @@ async function deploy(
     const result = await triggerDeploy(
       envConfig.serverUrl,
       env,
-      envConfig.authToken
+      envConfig.token
     );
 
     // 9. 显示结果

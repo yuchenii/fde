@@ -57,7 +57,7 @@ export function verifyFileChecksum(
  */
 export function validateRequest(
   env: string | null,
-  authToken: string | null,
+  token: string | null,
   config: ServerConfig
 ): { valid: boolean; error?: string; envConfig?: EnvironmentConfig } {
   // 检查环境参数
@@ -81,11 +81,11 @@ export function validateRequest(
   }
 
   // Step 3: 验证 Token
-  if (!authToken) {
+  if (!token) {
     return { valid: false, error: "Missing authorization token" };
   }
 
-  if (authToken !== validToken) {
+  if (token !== validToken) {
     return { valid: false, error: "Invalid token" };
   }
 

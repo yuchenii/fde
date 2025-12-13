@@ -101,13 +101,13 @@ bun run dev:client
  * Upload a file to the server
  * @param filePath - Path to the file to upload
  * @param serverUrl - Server URL
- * @param authToken - Authentication token
+ * @param token - Authentication token
  * @returns Upload result with success status
  */
 export async function uploadFile(
   filePath: string,
   serverUrl: string,
-  authToken: string
+  token: string
 ): Promise<UploadResult> {
   // Implementation
 }

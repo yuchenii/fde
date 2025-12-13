@@ -69,9 +69,9 @@ export async function checkServerHealth(serverUrl: string): Promise<any> {
  * 验证认证 Token（在 build 之前调用）
  * 确保 token 正确，避免 build 完成后上传时才发现 token 错误
  */
-export async function verifyAuthToken(
+export async function verifyToken(
   serverUrl: string,
-  authToken: string,
+  token: string,
   env: string
 ): Promise<{ valid: boolean; error?: string }> {
   try {
@@ -81,7 +81,7 @@ export async function verifyAuthToken(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: authToken,
+        Authorization: token,
       },
       body: JSON.stringify({ env }),
       signal: AbortSignal.timeout(10000), // 10秒超时

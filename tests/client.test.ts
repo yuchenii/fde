@@ -30,7 +30,7 @@ describe("Client Utils Tests", () => {
       const env = Object.values(config.environments)[0];
 
       expect(env.serverUrl).toBeDefined();
-      expect(env.authToken).toBeDefined();
+      expect(env.token).toBeDefined();
       expect(env.localPath).toBeDefined();
     });
 

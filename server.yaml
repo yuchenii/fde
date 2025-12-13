@@ -19,7 +19,7 @@ environments:
   # Production environment
   prod:
     # This token overrides the outer-level token for prod environment
-    # Token must match the client's authToken
+    # Token must match the client's token
     token: "prod-secret-key-super-secure"
     # Deployment directory
     uploadPath: "./deploy-packages/prod"

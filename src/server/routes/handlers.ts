@@ -34,12 +34,12 @@ export async function handleUpload(
     const shouldExtract = formData.get("shouldExtract") === "true";
 
     // 获取认证token（保留在header）
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     console.log(`\n📨 Received upload request for env: ${env || "undefined"}`);
 
     // 验证请求
-    const validation = validateRequest(env, authToken, config);
+    const validation = validateRequest(env, token, config);
 
     if (!validation.valid) {
       console.error(`❌ Validation failed: ${validation.error}`);
@@ -119,7 +119,7 @@ export async function handleDeploy(
     const { env, stream } = body;
 
     // 获取认证token和续接ID
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
     const lastEventId = req.headers.get("last-event-id");
 
     const isReconnect = lastEventId !== null;
@@ -130,7 +130,7 @@ export async function handleDeploy(
     );
 
     // 验证请求
-    const validation = validateRequest(env, authToken, config);
+    const validation = validateRequest(env, token, config);
 
     if (!validation.valid) {
       console.error(`❌ Validation failed: ${validation.error}`);
@@ -420,10 +420,10 @@ export async function handleDeployStatus(
     const env = url.searchParams.get("env");
 
     // 获取认证token
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     // 验证请求
-    const validation = validateRequest(env, authToken, config);
+    const validation = validateRequest(env, token, config);
 
     if (!validation.valid) {
       return Response.json(
@@ -517,12 +517,12 @@ export async function handleVerify(
   try {
     const body = (await req.json()) as { env: string };
     const { env } = body;
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     console.log(`\n🔐 Received verify request for env: ${env || "undefined"}`);
 
     // 验证请求
-    const validation = validateRequest(env, authToken, config);
+    const validation = validateRequest(env, token, config);
 
     if (!validation.valid) {
       console.error(`❌ Verification failed: ${validation.error}`);

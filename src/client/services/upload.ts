@@ -12,7 +12,7 @@ import { calculateChecksumFromFile } from "@/utils/checksum";
 export async function uploadFile(
   filePath: string,
   serverUrl: string,
-  authToken: string,
+  token: string,
   env: string,
   skipChecksum: boolean = false,
   shouldExtract: boolean = false
@@ -55,7 +55,7 @@ export async function uploadFile(
 
     // 只保留认证信息在header
     const headers: Record<string, string> = {
-      authorization: authToken,
+      Authorization: token,
     };
 
     // 发送请求到 /upload 端点
@@ -93,7 +93,7 @@ export async function uploadFile(
 export async function uploadDirectory(
   dirPath: string,
   serverUrl: string,
-  authToken: string,
+  token: string,
   env: string,
   excludePatterns: string[] = [],
   skipChecksum: boolean = false
@@ -102,7 +102,7 @@ export async function uploadDirectory(
     return uploadFile(
       tempZipPath,
       serverUrl,
-      authToken,
+      token,
       env,
       skipChecksum,
       true // 目录压缩后需要解压

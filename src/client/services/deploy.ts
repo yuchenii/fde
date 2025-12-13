@@ -4,7 +4,7 @@
 export async function triggerDeploy(
   serverUrl: string,
   env: string,
-  authToken: string
+  token: string
 ): Promise<any> {
   console.log(`\n🚀 Triggering deployment...`);
 
@@ -16,7 +16,7 @@ export async function triggerDeploy(
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        Authorization: authToken,
+        Authorization: token,
       };
 
       // 如果有 lastEventId，添加到请求头用于续接
@@ -81,7 +81,7 @@ export async function triggerDeploy(
       if (lastEventId) {
         console.log(`\n📋 Checking deployment status...`);
         try {
-          const status = await getDeployStatus(serverUrl, env, authToken);
+          const status = await getDeployStatus(serverUrl, env, token);
           if (status.lastResult) {
             if (status.lastResult.success) {
               console.log(`\n✅ Deployment completed successfully`);
@@ -111,12 +111,12 @@ export async function triggerDeploy(
 async function getDeployStatus(
   serverUrl: string,
   env: string,
-  authToken: string
+  token: string
 ): Promise<any> {
   const response = await fetch(`${serverUrl}/deploy/status?env=${env}`, {
     method: "GET",
     headers: {
-      Authorization: authToken,
+      Authorization: token,
     },
   });
 

@@ -25,7 +25,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function uploadFileChunked(
   filePath: string,
   serverUrl: string,
-  authToken: string,
+  token: string,
   env: string,
   skipChecksum: boolean = false,
   shouldExtract: boolean = false
@@ -58,7 +58,7 @@ export async function uploadFileChunked(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: authToken,
+      Authorization: token,
     },
     body: JSON.stringify({
       uploadId,
@@ -129,7 +129,7 @@ export async function uploadFileChunked(
           method: "POST",
           headers: {
             "Content-Type": "application/octet-stream",
-            Authorization: authToken,
+            Authorization: token,
             "X-Chunk-MD5": chunkMd5,
           },
           body: buffer,
@@ -227,7 +227,7 @@ export async function uploadFileChunked(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: authToken,
+      Authorization: token,
     },
     body: JSON.stringify({
       uploadId,
@@ -260,7 +260,7 @@ export async function uploadFileChunked(
 export async function uploadDirectoryChunked(
   dirPath: string,
   serverUrl: string,
-  authToken: string,
+  token: string,
   env: string,
   excludePatterns: string[] = [],
   skipChecksum: boolean = false
@@ -271,7 +271,7 @@ export async function uploadDirectoryChunked(
     return uploadFileChunked(
       tempZipPath,
       serverUrl,
-      authToken,
+      token,
       env,
       skipChecksum,
       true // 目录压缩后需要解压

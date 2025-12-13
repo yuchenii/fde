@@ -78,7 +78,7 @@ serverUrl: "http://your-server-ip:3000" # Global server URL fallback
 
 environments:
   prod:
-    # authToken and serverUrl inherit from outer-level if not specified
+    # token and serverUrl inherit from outer-level if not specified
     buildCommand: "npm run build" # Command to build your project
     localPath: "./dist" # Local folder to upload
 ```
@@ -185,7 +185,7 @@ fde-client --help
 | Field          | Type       | Required | Default            | Description                                                                  |
 | :------------- | :--------- | :------- | :----------------- | :--------------------------------------------------------------------------- |
 | `serverUrl`    | `string`   | No       | Global `serverUrl` | Full URL of the FDE server. Falls back to outer-level `serverUrl`.           |
-| `authToken`    | `string`   | No       | Global `token`     | Auth token matching the server's environment token.                          |
+| `token`        | `string`   | No       | Global `token`     | Auth token matching the server's environment token.                          |
 | `localPath`    | `string`   | **Yes**  | -                  | Local directory or file to deploy. Resolved relative to config file.         |
 | `buildCommand` | `string`   | No       | -                  | Command to run locally before upload (e.g., `npm run build`).                |
 | `exclude`      | `string[]` | No       | -                  | List of glob patterns to exclude from upload (e.g., `node_modules`, `.git`). |

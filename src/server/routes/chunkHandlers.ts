@@ -20,14 +20,14 @@ export async function handleUploadStatus(
   const url = new URL(req.url);
   const uploadId = url.searchParams.get("uploadId");
   const env = url.searchParams.get("env");
-  const authToken = req.headers.get("authorization");
+  const token = req.headers.get("authorization");
 
   if (!uploadId) {
     return Response.json({ error: "Missing uploadId" }, { status: 400 });
   }
 
   // 验证请求
-  const validation = validateRequest(env, authToken, config);
+  const validation = validateRequest(env, token, config);
   if (!validation.valid) {
     return Response.json(
       { error: validation.error },
@@ -56,10 +56,10 @@ export async function handleUploadInit(
       env: string;
     };
 
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     // 验证请求
-    const validation = validateRequest(body.env, authToken, config);
+    const validation = validateRequest(body.env, token, config);
     if (!validation.valid) {
       return Response.json(
         { error: validation.error },
@@ -106,7 +106,7 @@ export async function handleUploadChunk(
     const uploadId = url.searchParams.get("uploadId");
     const chunkIndexStr = url.searchParams.get("chunkIndex");
     const env = url.searchParams.get("env");
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     if (!uploadId || chunkIndexStr === null) {
       return Response.json(
@@ -116,7 +116,7 @@ export async function handleUploadChunk(
     }
 
     // 验证请求
-    const validation = validateRequest(env, authToken, config);
+    const validation = validateRequest(env, token, config);
     if (!validation.valid) {
       return Response.json(
         { error: validation.error },
@@ -184,10 +184,10 @@ export async function handleUploadComplete(
       env: string;
     };
 
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     // 验证请求
-    const validation = validateRequest(body.env, authToken, config);
+    const validation = validateRequest(body.env, token, config);
     if (!validation.valid) {
       return Response.json(
         { error: validation.error },
@@ -258,14 +258,14 @@ export async function handleUploadCancel(
     const url = new URL(req.url);
     const uploadId = url.searchParams.get("uploadId");
     const env = url.searchParams.get("env");
-    const authToken = req.headers.get("authorization");
+    const token = req.headers.get("authorization");
 
     if (!uploadId) {
       return Response.json({ error: "Missing uploadId" }, { status: 400 });
     }
 
     // 验证请求
-    const validation = validateRequest(env, authToken, config);
+    const validation = validateRequest(env, token, config);
     if (!validation.valid) {
       return Response.json(
         { error: validation.error },

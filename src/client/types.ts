@@ -3,7 +3,7 @@
  */
 export interface EnvironmentConfig {
   serverUrl: string; // Required after merging with outer-level serverUrl
-  authToken?: string; // Optional, falls back to outer-level token
+  token?: string; // Optional, falls back to outer-level token
   localPath: string;
   buildCommand?: string;
   exclude?: string[];
