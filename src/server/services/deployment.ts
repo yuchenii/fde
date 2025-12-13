@@ -1,7 +1,7 @@
 import { join } from "path";
 import { mkdir, rm } from "fs/promises";
 import { existsSync } from "fs";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import type { EnvironmentConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
@@ -58,6 +58,107 @@ function getSshCommand(
 }
 
 /**
+ * 准备部署命令（提取公共逻辑）
+ */
+function prepareDeployCommand(
+  deployCommand: string,
+  uploadPath: string,
+  configDir: string
+): { command: string; cwd: string } {
+  if (isDockerEnvironment()) {
+    if (!process.env.SSH_HOST || !process.env.SSH_USER) {
+      throw new Error(
+        "SSH_HOST and SSH_USER must be set in Docker environment"
+      );
+    }
+    return getSshCommand(deployCommand, uploadPath, configDir);
+  } else {
+    const { command, scriptDir } = parseScriptCommand(deployCommand, configDir);
+    return {
+      command,
+      cwd: scriptDir || process.cwd(),
+    };
+  }
+}
+
+/**
+ * 流式执行部署命令
+ * @param deployCommand 部署命令
+ * @param uploadPath 部署目录
+ * @param configDir 配置文件所在目录
+ * @param onData 数据回调函数，接收 type ('stdout'|'stderr') 和 data
+ * @returns Promise，resolve 时返回 exit code
+ */
+export function executeDeployCommandStream(
+  deployCommand: string,
+  uploadPath: string,
+  configDir: string,
+  onData: (type: "stdout" | "stderr", data: string) => void
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    if (!deployCommand) {
+      resolve({ code: 0, stdout: "", stderr: "" });
+      return;
+    }
+
+    const { command, cwd } = prepareDeployCommand(
+      deployCommand,
+      uploadPath,
+      configDir
+    );
+
+    console.log(`🚀 Executing deploy command (stream): ${command}`);
+
+    // 使用 shell 执行命令
+    const child = spawn(command, [], {
+      cwd,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data: Buffer) => {
+      const text = data.toString();
+      stdout += text;
+      // 按行分别打日志，每行都有时间戳
+      text
+        .split("\n")
+        .filter((line) => line)
+        .forEach((line) => console.log(line));
+      onData("stdout", text);
+    });
+
+    child.stderr.on("data", (data: Buffer) => {
+      const text = data.toString();
+      stderr += text;
+      // 按行分别打日志，每行都有时间戳
+      text
+        .split("\n")
+        .filter((line) => line)
+        .forEach((line) => console.error(line));
+      onData("stderr", text);
+    });
+
+    child.on("close", (code) => {
+      const exitCode = code ?? 0;
+      if (exitCode === 0) {
+        console.log(`✅ Deploy command completed (stream)`);
+      } else {
+        console.error(`❌ Deploy command failed with code ${exitCode}`);
+      }
+      resolve({ code: exitCode, stdout, stderr });
+    });
+
+    child.on("error", (err) => {
+      console.error(`❌ Deploy command error:`, err);
+      reject(err);
+    });
+  });
+}
+
+/**
  * 执行部署命令
  * @param deployCommand 部署命令
  * @param uploadPath 部署目录
@@ -73,30 +174,12 @@ export async function executeDeployCommand(
     return { stdout: "", stderr: "" };
   }
 
-  // 准备执行的命令
-  let commandToExecute = deployCommand;
-  let cwd = uploadPath;
-
-  if (isDockerEnvironment()) {
-    if (!process.env.SSH_HOST || !process.env.SSH_USER) {
-      throw new Error(
-        "SSH_HOST and SSH_USER must be set in Docker environment"
-      );
-    }
-
-    // 获取 SSH 命令
-    const sshCommand = getSshCommand(deployCommand, uploadPath, configDir);
-    commandToExecute = sshCommand.command;
-    cwd = sshCommand.cwd;
-  } else {
-    // 普通环境：需要处理 deployCommand 中的相对路径
-    // 如果命令以 ./ 或 ../ 开头，将其解析为相对于配置文件目录的绝对路径
-    const { command, scriptDir } = parseScriptCommand(deployCommand, configDir);
-
-    commandToExecute = command;
-    // 如果有脚本目录，在脚本目录执行；否则在项目根目录执行
-    cwd = scriptDir || process.cwd();
-  }
+  // 使用公共函数准备命令
+  const { command: commandToExecute, cwd } = prepareDeployCommand(
+    deployCommand,
+    uploadPath,
+    configDir
+  );
 
   console.log(`🚀 Executing deploy command: ${commandToExecute}`);
   try {

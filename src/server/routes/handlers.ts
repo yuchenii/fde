@@ -4,7 +4,17 @@ import {
   extractAndDeploy,
   saveFile,
   executeDeployCommand,
+  executeDeployCommandStream,
 } from "../services/deployment";
+import {
+  startDeploy,
+  addOutput,
+  finishDeploy,
+  getOutputsFrom,
+  isDeploying,
+  getDeployStatus,
+  getLatestOutputId,
+} from "../services/deployState";
 import { VERSION } from "@/version";
 
 /**
@@ -95,6 +105,8 @@ export async function handleUpload(
 
 /**
  * POST /deploy - 执行部署命令
+ * 支持 stream 参数，stream=true 时返回 SSE 流式响应
+ * 支持 Last-Event-ID 头，用于断连续接
  */
 export async function handleDeploy(
   req: Request,
@@ -102,19 +114,26 @@ export async function handleDeploy(
 ): Promise<Response> {
   try {
     // 获取环境参数
-    const body = (await req.json()) as { env: string };
-    const { env } = body;
+    const body = (await req.json()) as { env: string; stream?: boolean };
+    const { env, stream } = body;
 
-    // 获取认证token（保留在header）
+    // 获取认证token和续接ID
     const authToken = req.headers.get("authorization");
+    const lastEventId = req.headers.get("last-event-id");
 
-    console.log(`\n📨 Received deploy request for env: ${env || "undefined"}`);
+    const isReconnect = lastEventId !== null;
+    console.log(
+      `\n📨 Received deploy request for env: ${env || "undefined"}${
+        stream ? " (stream mode)" : ""
+      }${isReconnect ? ` (reconnect from id: ${lastEventId})` : ""}`
+    );
 
     // 验证请求
     const validation = validateRequest(env, authToken, config);
 
     if (!validation.valid) {
       console.error(`❌ Validation failed: ${validation.error}`);
+      // 流式模式下也返回 JSON 错误（客户端需要能解析）
       return Response.json(
         { error: validation.error },
         {
@@ -123,7 +142,23 @@ export async function handleDeploy(
       );
     }
 
-    // 执行部署命令
+    // 流式模式
+    if (stream) {
+      // 检查是否是续接请求
+      if (isReconnect) {
+        const fromId = parseInt(lastEventId, 10) || 0;
+        return handleDeployResume(env!, fromId, config);
+      }
+
+      // 新部署
+      return handleDeployStream(
+        env!,
+        { envConfig: validation.envConfig! },
+        config
+      );
+    }
+
+    // 非流式模式：原有逻辑
     const deployResult = await executeDeployCommand(
       validation.envConfig!.deployCommand,
       validation.envConfig!.uploadPath,
@@ -131,24 +166,7 @@ export async function handleDeploy(
     );
 
     // 部署成功后检查并轮转日志文件
-    try {
-      const { rotateLogIfNeeded } = await import("../utils/logRotate");
-      const { resolve } = await import("path");
-
-      // 从配置获取日志路径和设置
-      const logPath = config.log?.path || "./deploy-server.log";
-      const logFile = resolve(process.cwd(), logPath);
-      const maxSizeMB = config.log?.maxSize || 10;
-      const maxBackups = config.log?.maxBackups || 5;
-
-      rotateLogIfNeeded(logFile, {
-        maxSize: maxSizeMB * 1024 * 1024,
-        maxBackups: maxBackups,
-      });
-    } catch (error) {
-      // 日志轮转失败不影响部署结果
-      console.warn(`⚠️  Log rotation failed: ${error}`);
-    }
+    await rotateLogAfterDeploy(config);
 
     return Response.json({
       success: true,
@@ -169,6 +187,293 @@ export async function handleDeploy(
       },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * 流式部署处理（新部署）
+ */
+function handleDeployStream(
+  env: string,
+  validation: {
+    envConfig: NonNullable<ReturnType<typeof validateRequest>["envConfig"]>;
+  },
+  config: ServerConfig
+): Response {
+  const encoder = new TextEncoder();
+
+  // 标记部署开始
+  startDeploy(env);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let isClosed = false;
+
+      const sendEvent = (event: string, data: any, id?: number) => {
+        if (isClosed) return;
+        try {
+          let message = "";
+          if (id !== undefined) {
+            message = `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(
+              data
+            )}\n\n`;
+          } else {
+            message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+          }
+          controller.enqueue(encoder.encode(message));
+        } catch {
+          isClosed = true;
+        }
+      };
+
+      try {
+        const result = await executeDeployCommandStream(
+          validation.envConfig.deployCommand,
+          validation.envConfig.uploadPath,
+          config.configDir,
+          (type, data) => {
+            // 添加到缓冲并获取ID
+            const id = addOutput(env, "output", { type, data });
+            sendEvent("output", { type, data }, id);
+          }
+        );
+
+        // 轮转日志
+        await rotateLogAfterDeploy(config);
+
+        if (result.code === 0) {
+          const doneData = {
+            success: true,
+            message: `Deployment to ${env} completed successfully`,
+            uploadPath: validation.envConfig.uploadPath,
+            exitCode: result.code,
+          };
+          const id = addOutput(env, "done", doneData);
+          sendEvent("done", doneData, id);
+          finishDeploy(env, { success: true, exitCode: 0 });
+        } else {
+          const errorData = {
+            error: "Deploy command failed",
+            exitCode: result.code,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          };
+          const id = addOutput(env, "error", errorData);
+          sendEvent("error", errorData, id);
+          finishDeploy(env, { success: false, exitCode: result.code });
+        }
+      } catch (error: any) {
+        console.error(`❌ Stream deploy error:`, error);
+        const errorData = {
+          error: "Deploy command failed",
+          details: error.message,
+        };
+        const id = addOutput(env, "error", errorData);
+        sendEvent("error", errorData, id);
+        finishDeploy(env, { success: false, exitCode: -1 });
+      } finally {
+        if (!isClosed) {
+          try {
+            controller.close();
+          } catch {
+            // 忽略关闭错误
+          }
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+/**
+ * 流式部署续接处理
+ */
+function handleDeployResume(
+  env: string,
+  fromId: number,
+  config: ServerConfig
+): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let isClosed = false;
+
+      const sendEvent = (event: string, data: any, id?: number) => {
+        if (isClosed) return;
+        try {
+          let message = "";
+          if (id !== undefined) {
+            message = `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(
+              data
+            )}\n\n`;
+          } else {
+            message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+          }
+          controller.enqueue(encoder.encode(message));
+        } catch {
+          isClosed = true;
+        }
+      };
+
+      try {
+        // 检查部署状态
+        if (!isDeploying(env)) {
+          // 部署已完成，返回最终结果
+          const status = getDeployStatus(env);
+          if (status.lastResult) {
+            if (status.lastResult.success) {
+              sendEvent("done", {
+                success: true,
+                message: `Deployment to ${env} completed successfully`,
+                exitCode: status.lastResult.exitCode,
+              });
+            } else {
+              sendEvent("error", {
+                error: "Deploy command failed",
+                exitCode: status.lastResult.exitCode,
+              });
+            }
+          } else {
+            // 没有部署记录
+            sendEvent("error", {
+              error: "No deployment in progress",
+            });
+          }
+          return;
+        }
+
+        // 部署进行中，重放缓冲的输出
+        console.log(`🔄 Resuming SSE for env: ${env} from id: ${fromId}`);
+        const bufferedOutputs = getOutputsFrom(env, fromId);
+        for (const output of bufferedOutputs) {
+          sendEvent(output.event, output.data, output.id);
+        }
+
+        // 继续监听新输出（轮询方式）
+        let lastId = getLatestOutputId(env);
+        while (isDeploying(env) && !isClosed) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const newOutputs = getOutputsFrom(env, lastId);
+          for (const output of newOutputs) {
+            sendEvent(output.event, output.data, output.id);
+            lastId = output.id;
+          }
+        }
+
+        // 部署完成，发送仍在缓冲中的最终消息
+        const finalOutputs = getOutputsFrom(env, lastId);
+        for (const output of finalOutputs) {
+          sendEvent(output.event, output.data, output.id);
+        }
+      } catch (error: any) {
+        console.error(`❌ SSE resume error:`, error);
+        sendEvent("error", {
+          error: "Resume failed",
+          details: error.message,
+        });
+      } finally {
+        if (!isClosed) {
+          try {
+            controller.close();
+          } catch {
+            // 忽略关闭错误
+          }
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+/**
+ * GET /deploy/status - 查询部署状态
+ */
+export async function handleDeployStatus(
+  req: Request,
+  config: ServerConfig
+): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    const env = url.searchParams.get("env");
+
+    // 获取认证token
+    const authToken = req.headers.get("authorization");
+
+    // 验证请求
+    const validation = validateRequest(env, authToken, config);
+
+    if (!validation.valid) {
+      return Response.json(
+        { error: validation.error },
+        {
+          status: validation.error?.includes("token") ? 403 : 400,
+        }
+      );
+    }
+
+    const status = getDeployStatus(env!);
+
+    return Response.json({
+      env,
+      running: status.running,
+      startTime: status.startTime?.toISOString(),
+      bufferedCount: status.bufferedCount,
+      lastResult: status.lastResult
+        ? {
+            success: status.lastResult.success,
+            startTime: status.lastResult.startTime.toISOString(),
+            endTime: status.lastResult.endTime.toISOString(),
+            exitCode: status.lastResult.exitCode,
+            message: status.lastResult.message,
+          }
+        : null,
+    });
+  } catch (error: any) {
+    console.error(`❌ Deploy status error:`, error);
+    return Response.json(
+      {
+        error: "Failed to get deploy status",
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * 部署后轮转日志
+ */
+async function rotateLogAfterDeploy(config: ServerConfig) {
+  try {
+    const { rotateLogIfNeeded } = await import("../utils/logRotate");
+    const { resolve } = await import("path");
+
+    const logPath = config.log?.path || "./deploy-server.log";
+    const logFile = resolve(process.cwd(), logPath);
+    const maxSizeMB = config.log?.maxSize || 10;
+    const maxBackups = config.log?.maxBackups || 5;
+
+    rotateLogIfNeeded(logFile, {
+      maxSize: maxSizeMB * 1024 * 1024,
+      maxBackups: maxBackups,
+    });
+  } catch (error) {
+    console.warn(`⚠️  Log rotation failed: ${error}`);
   }
 }
 

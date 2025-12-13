@@ -461,6 +461,65 @@ environments:
       const data = await response.json();
       expect(data.success).toBe(true);
     });
+
+    it("should support streaming deploy", async () => {
+      const response = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          env: "test",
+          stream: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/event-stream");
+
+      // 读取 SSE 流
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+      }
+
+      // 验证输出包含期望的 SSE 事件
+      expect(fullText).toContain("event: output");
+      expect(fullText).toContain("test deployed");
+      expect(fullText).toContain("event: done");
+      expect(fullText).toContain('"success":true');
+    });
+
+    it("should return JSON when stream is false", async () => {
+      const response = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          env: "test",
+          stream: false,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain(
+        "application/json"
+      );
+
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.stdout).toContain("test deployed");
+    });
   });
 
   describe("Deployment Failure", () => {
@@ -510,6 +569,178 @@ environments:
       expect(data.stdout).toContain("Starting...");
       expect(data.stderr).toContain("Error occurred");
       expect(data.exitCode).toBe(1);
+    });
+
+    it("should stream error output when deploy command fails with stream mode", async () => {
+      const response = await fetch(`${FAIL_SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: FAIL_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          env: "fail-test",
+          stream: true,
+        }),
+      });
+
+      expect(response.status).toBe(200); // SSE 始终返回 200
+      expect(response.headers.get("content-type")).toBe("text/event-stream");
+
+      // 读取 SSE 流
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+      }
+
+      // 验证输出包含实时 output 事件
+      expect(fullText).toContain("event: output");
+      expect(fullText).toContain("Starting...");
+
+      // 验证包含 error 事件
+      expect(fullText).toContain("event: error");
+      expect(fullText).toContain('"exitCode":1');
+      expect(fullText).toContain("Error occurred");
+    });
+  });
+
+  describe("Deploy Status", () => {
+    it("should return deploy status after successful deployment", async () => {
+      // 先执行一次部署
+      const deployResponse = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: true }),
+      });
+
+      // 读取完整流以等待部署完成
+      const reader = deployResponse.body?.getReader();
+      while (true) {
+        const { done } = await reader!.read();
+        if (done) break;
+      }
+
+      // 查询状态
+      const response = await fetch(`${SERVER_URL}/deploy/status?env=test`, {
+        method: "GET",
+        headers: {
+          authorization: TEST_TOKEN,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      expect(data.env).toBe("test");
+      expect(data.running).toBe(false);
+      expect(data.lastResult).toBeDefined();
+      expect(data.lastResult.success).toBe(true);
+      expect(data.lastResult.exitCode).toBe(0);
+    });
+
+    it("should reject status query without token", async () => {
+      const response = await fetch(`${SERVER_URL}/deploy/status?env=test`, {
+        method: "GET",
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should reject status query for unknown environment", async () => {
+      const response = await fetch(`${SERVER_URL}/deploy/status?env=unknown`, {
+        method: "GET",
+        headers: {
+          authorization: TEST_TOKEN,
+        },
+      });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("SSE Reconnection", () => {
+    it("should include event ids in SSE stream", async () => {
+      const response = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: true }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+      }
+
+      // 验证 SSE 消息包含 id 字段
+      expect(fullText).toMatch(/id: \d+/);
+      expect(fullText).toContain("event: output");
+      expect(fullText).toContain("event: done");
+    });
+
+    it("should return last result on reconnect after deploy finished", async () => {
+      // 先完成一次部署
+      const deployRes = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: true }),
+      });
+
+      // 读取完所有输出
+      const reader = deployRes.body?.getReader();
+      while (true) {
+        const { done } = await reader!.read();
+        if (done) break;
+      }
+
+      // 模拟重连（带 Last-Event-ID）
+      const reconnectRes = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+          "last-event-id": "999999",
+        },
+        body: JSON.stringify({ env: "test", stream: true }),
+      });
+
+      expect(reconnectRes.status).toBe(200);
+
+      const decoder = new TextDecoder();
+      let fullText = "";
+      const reconnectReader = reconnectRes.body?.getReader();
+
+      while (true) {
+        const { done, value } = await reconnectReader!.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+      }
+
+      // 部署已完成，应该返回 done 事件
+      expect(fullText).toContain("event: done");
+      expect(fullText).toContain('"success":true');
     });
   });
 });

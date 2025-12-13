@@ -16,6 +16,7 @@ FDE Server 提供了一组 RESTful API，用于文件上传、部署触发、健
 | `/upload/status`   | GET    | Query upload status     |
 | `/upload/cancel`   | DELETE | Cancel upload           |
 | `/deploy`          | POST   | Execute deployment      |
+| `/deploy/status`   | GET    | Query deploy status     |
 
 ## 认证机制
 
@@ -241,9 +242,11 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 
 ---
 
+## 部署相关接口
+
 ### 10. 触发部署 (Trigger Deploy)
 
-仅触发配置好的部署脚本，不上传新文件。
+执行配置好的部署脚本。支持流式输出（SSE）和断连续接。
 
 - **URL**: `/deploy`
 - **Method**: `POST`
@@ -253,10 +256,24 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 **请求体:**
 
 ```json
-{ "env": "dev" }
+{
+  "env": "dev",
+  "stream": true
+}
 ```
 
-**响应:**
+| 字段     | 类型    | 必填 | 描述                             |
+| -------- | ------- | ---- | -------------------------------- |
+| `env`    | String  | 是   | 目标环境名称                     |
+| `stream` | Boolean | 否   | 是否启用流式输出（默认 `false`） |
+
+**请求头（可选）:**
+
+| Header          | 描述                        |
+| --------------- | --------------------------- |
+| `Last-Event-ID` | SSE 断连续接时的最后事件 ID |
+
+#### 非流式响应 (`stream: false`)
 
 - **成功 (`200 OK`)**:
 
@@ -279,3 +296,88 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
     "exitCode": 1
   }
   ```
+
+#### 流式响应 (`stream: true`)
+
+返回 Server-Sent Events (SSE) 流：
+
+```http
+Content-Type: text/event-stream
+```
+
+**事件类型:**
+
+| Event    | 描述         | Data 格式                                    |
+| -------- | ------------ | -------------------------------------------- |
+| `output` | 命令输出     | `{"type": "stdout"/"stderr", "data": "..."}` |
+| `done`   | 部署成功完成 | `{"success": true, "exitCode": 0, ...}`      |
+| `error`  | 部署失败     | `{"error": "...", "exitCode": 1, ...}`       |
+
+**示例 SSE 流:**
+
+```
+id: 1
+event: output
+data: {"type":"stdout","data":"Building...\n"}
+
+id: 2
+event: output
+data: {"type":"stdout","data":"Done!\n"}
+
+id: 3
+event: done
+data: {"success":true,"message":"Deployment completed","exitCode":0}
+```
+
+#### SSE 断连续接
+
+如果客户端断连后重连，可以在请求头中带上 `Last-Event-ID`：
+
+```http
+Last-Event-ID: 2
+```
+
+服务端会：
+
+1. 如果部署还在运行：从 ID 2 之后继续输出
+2. 如果部署已完成：返回最终结果（`done` 或 `error`）
+
+---
+
+### 11. 查询部署状态 (Deploy Status)
+
+查询指定环境的部署状态和最后一次部署结果。
+
+- **URL**: `/deploy/status`
+- **Method**: `GET`
+- **Auth Required**: Yes
+
+**查询参数:**
+
+| 参数  | 必填 | 描述       |
+| ----- | ---- | ---------- |
+| `env` | 是   | 目标环境名 |
+
+**响应:**
+
+```json
+{
+  "env": "dev",
+  "running": false,
+  "startTime": "2025-12-13T10:30:00.000Z",
+  "bufferedCount": 0,
+  "lastResult": {
+    "success": true,
+    "startTime": "2025-12-13T10:30:00.000Z",
+    "endTime": "2025-12-13T10:31:30.000Z",
+    "exitCode": 0
+  }
+}
+```
+
+| 字段            | 类型    | 描述                         |
+| --------------- | ------- | ---------------------------- |
+| `running`       | Boolean | 是否正在部署                 |
+| `startTime`     | String  | 部署开始时间（ISO 格式）     |
+| `bufferedCount` | Number  | 缓冲区中的输出数量           |
+| `lastResult`    | Object  | 最后一次部署结果（可能为空） |

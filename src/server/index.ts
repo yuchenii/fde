@@ -5,6 +5,7 @@ import { loadConfig } from "./config/loader";
 import {
   handleUpload,
   handleDeploy,
+  handleDeployStatus,
   handlePing,
   handleHealth,
   handleVerify,
@@ -95,6 +96,9 @@ export async function startServer(configPath: string) {
     // 允许大文件上传 (默认是 128MB，这里设置为 1GB)
     maxRequestBodySize: 1024 * 1024 * 1024,
 
+    // 设置最大 idle timeout (255秒，Bun 限制)，支持长时间运行的部署命令
+    idleTimeout: 255,
+
     // 使用 Bun 官方路由语法
     // 路由按特异性顺序匹配：精确路由 > 参数路由 > 通配符路由 > 全局捕获
     routes: {
@@ -105,6 +109,10 @@ export async function startServer(configPath: string) {
 
       "/deploy": {
         POST: async (req: Request) => handleDeploy(req, config),
+      },
+
+      "/deploy/status": {
+        GET: async (req: Request) => handleDeployStatus(req, config),
       },
 
       "/ping": {
