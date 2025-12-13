@@ -25,14 +25,18 @@ bun run build
 
 ### Start the server (local development):
 
+// turbo
+
 ```bash
 bun run dev:server
 ```
 
 ### Deploy using client (local development):
 
+// turbo
+
 ```bash
-bun run dev:client
+bun run dev:client deploy -e test
 ```
 
 ## Production Mode
@@ -45,7 +49,7 @@ bun run dev:client
    // turbo
 
 ```bash
-./dist/fde-server -c server.yaml
+./fde-server -c server.yaml
 ```
 
 ### On your local machine:
@@ -56,21 +60,61 @@ bun run dev:client
    // turbo
 
 ```bash
-./dist/fde-client --env=test
+./fde-client deploy -e test
 ```
 
 3. Deploy to production environment:
 
 ```bash
-./dist/fde-client --env=prod
+./fde-client deploy -e prod
 ```
 
-## Verify Deployment
-
-Check server health:
+4. Deploy with custom config file:
 
 ```bash
-curl http://your-server:3000/health
+./fde-client deploy -e prod -c /path/to/deploy.yaml
+```
+
+5. Skip build and upload files directly:
+
+```bash
+./fde-client deploy -e prod --skip-build
+```
+
+6. Trigger deployment only (no build/upload):
+
+```bash
+./fde-client deploy -e prod --trigger-only
+```
+
+## Utility Commands
+
+### Check server connection:
+
+```bash
+./fde-client ping -e test
+# or
+./fde-client ping -s http://your-server:3000
+```
+
+### Check server health:
+
+```bash
+./fde-client health -e test
+# or
+./fde-client health -s http://your-server:3000
+```
+
+### Check for updates:
+
+```bash
+./fde-client upgrade
+```
+
+### Uninstall FDE:
+
+```bash
+./fde-client uninstall
 ```
 
 ## Troubleshooting
