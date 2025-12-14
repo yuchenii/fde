@@ -14,7 +14,6 @@ export async function uploadFile(
   serverUrl: string,
   token: string,
   env: string,
-  skipChecksum: boolean = false,
   shouldExtract: boolean = false
 ): Promise<any> {
   console.log(`\n📄 Uploading single file: ${basename(filePath)}`);
@@ -27,14 +26,9 @@ export async function uploadFile(
     console.log(`📤 File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
 
     // 计算文件校验和
-    let checksum = "";
-    if (!skipChecksum) {
-      console.log(`🔐 Calculating checksum...`);
-      checksum = await calculateChecksumFromFile(filePath);
-      console.log(`✅ Checksum (SHA256): ${checksum.substring(0, 16)}...`);
-    } else {
-      console.log(`⏭️  Skipping checksum verification`);
-    }
+    console.log(`🔐 Calculating checksum...`);
+    const checksum = await calculateChecksumFromFile(filePath);
+    console.log(`✅ Checksum (SHA256): ${checksum.substring(0, 16)}...`);
 
     // 使用 Bun 原生方式读取文件
     const fileData = Bun.file(filePath);
@@ -95,8 +89,7 @@ export async function uploadDirectory(
   serverUrl: string,
   token: string,
   env: string,
-  excludePatterns: string[] = [],
-  skipChecksum: boolean = false
+  excludePatterns: string[] = []
 ): Promise<any> {
   return withTempZip(dirPath, env, excludePatterns, async (tempZipPath) => {
     return uploadFile(
@@ -104,7 +97,6 @@ export async function uploadDirectory(
       serverUrl,
       token,
       env,
-      skipChecksum,
       true // 目录压缩后需要解压
     );
   });

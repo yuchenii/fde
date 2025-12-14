@@ -111,8 +111,7 @@ async function deploy(
           envConfig.serverUrl,
           envConfig.token,
           env,
-          envConfig.exclude || [],
-          envConfig.skipChecksum || false
+          envConfig.exclude || []
         );
       } else {
         // 单文件：分片上传
@@ -120,8 +119,7 @@ async function deploy(
           envConfig.localPath,
           envConfig.serverUrl,
           envConfig.token,
-          env,
-          envConfig.skipChecksum || false
+          env
         );
       }
     }

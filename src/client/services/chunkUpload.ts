@@ -27,7 +27,6 @@ export async function uploadFileChunked(
   serverUrl: string,
   token: string,
   env: string,
-  skipChecksum: boolean = false,
   shouldExtract: boolean = false
 ): Promise<any> {
   // 获取文件信息
@@ -64,7 +63,7 @@ export async function uploadFileChunked(
       uploadId,
       totalChunks,
       fileName,
-      checksum: skipChecksum ? undefined : checksum,
+      checksum,
       shouldExtract,
       env,
     }),
@@ -232,7 +231,7 @@ export async function uploadFileChunked(
     body: JSON.stringify({
       uploadId,
       fileName,
-      checksum: skipChecksum ? undefined : checksum,
+      checksum,
       shouldExtract,
       env,
     }),
@@ -262,8 +261,7 @@ export async function uploadDirectoryChunked(
   serverUrl: string,
   token: string,
   env: string,
-  excludePatterns: string[] = [],
-  skipChecksum: boolean = false
+  excludePatterns: string[] = []
 ): Promise<any> {
   const { withTempZip } = await import("./archive");
 
@@ -273,7 +271,6 @@ export async function uploadDirectoryChunked(
       serverUrl,
       token,
       env,
-      skipChecksum,
       true // 目录压缩后需要解压
     );
   });

@@ -7,7 +7,6 @@ export interface EnvironmentConfig {
   localPath: string;
   buildCommand?: string;
   exclude?: string[];
-  skipChecksum?: boolean; // 跳过文件完整性校验
 }
 
 /**

@@ -189,7 +189,6 @@ fde-client --help
 | `localPath`    | `string`   | **Yes**  | -                  | Local directory or file to deploy. Resolved relative to config file.         |
 | `buildCommand` | `string`   | No       | -                  | Command to run locally before upload (e.g., `npm run build`).                |
 | `exclude`      | `string[]` | No       | -                  | List of glob patterns to exclude from upload (e.g., `node_modules`, `.git`). |
-| `skipChecksum` | `boolean`  | No       | `false`            | If `true`, skips SHA256 checksum calculation (not recommended).              |
 
 ### 🐳 Docker Support
 
