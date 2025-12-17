@@ -5,7 +5,7 @@ import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import type { EnvironmentConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
-import { parseScriptCommand } from "@/utils/command";
+import { resolveCommandCwd, type PathContext } from "@/utils/path";
 
 const execAsync = promisify(exec);
 
@@ -27,11 +27,15 @@ function getSshCommand(
 
   console.log(`🐳 Docker environment detected, using SSH to execute on host`);
 
-  // 处理 deployCommand 中的相对路径
-  // uploadPath 和 configDir 已是宿主机绝对路径
-  const { command: finalDeployCommand, scriptDir } = parseScriptCommand(
+  // 使用统一的路径解析（Docker 环境，通过 SSH 在宿主机执行）
+  const pathContext: PathContext = {
+    configDir,
+    isDocker: true,
+    hostConfigDir: configDir, // configDir 已经是宿主机路径
+  };
+  const { command: finalDeployCommand, cwd: scriptCwd } = resolveCommandCwd(
     deployCommand,
-    configDir
+    pathContext
   );
 
   // 构建 SSH 命令
@@ -39,14 +43,7 @@ function getSshCommand(
   // -o UserKnownHostsFile=/dev/null 避免写入 known_hosts
   // -o IdentitiesOnly=yes 避免尝试所有 key 导致 Too many authentication failures
   // -o LogLevel=ERROR 只显示错误，隐藏警告信息（如首次添加known_hosts的警告）
-  let innerCommand: string;
-  if (scriptDir) {
-    // 脚本文件：先 cd 到脚本目录，再执行脚本
-    innerCommand = `mkdir -p '${uploadPath}' && cd '${scriptDir}' && ${finalDeployCommand}`;
-  } else {
-    // 普通命令：在 configDir（项目根目录）执行
-    innerCommand = `mkdir -p '${uploadPath}' && cd '${configDir}' && ${finalDeployCommand}`;
-  }
+  const innerCommand = `mkdir -p '${uploadPath}' && cd '${scriptCwd}' && ${finalDeployCommand}`;
 
   const command = `ssh -p ${sshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o LogLevel=ERROR -i ${privateKeyPath} ${sshUser}@${sshHost} "${innerCommand.replace(
     /"/g,
@@ -73,11 +70,9 @@ function prepareDeployCommand(
     }
     return getSshCommand(deployCommand, uploadPath, configDir);
   } else {
-    const { command, scriptDir } = parseScriptCommand(deployCommand, configDir);
-    return {
-      command,
-      cwd: scriptDir || process.cwd(),
-    };
+    // 非 Docker 环境：使用统一的路径解析
+    const pathContext: PathContext = { configDir };
+    return resolveCommandCwd(deployCommand, pathContext);
   }
 }
 

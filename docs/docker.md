@@ -84,11 +84,7 @@ version: "3"
 
 services:
   fde-server:
-    # Use build for local development, use image for production
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # image: yuchenii/fde-server:latest
+    image: yuchenii/fde-server:latest
     container_name: fde-server
 
     # For docker to connect to host machine
@@ -126,6 +122,8 @@ services:
 ### 3.3 配置文件 (server.yaml)
 
 `server.yaml` 是 FDE Server 的核心配置文件。
+
+路径解析：[Path Resolution](path-resolution.md#docker-environment)
 
 ```yaml
 # 服务器端口

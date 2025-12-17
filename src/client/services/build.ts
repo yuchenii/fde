@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { parseScriptCommand } from "@/utils/command";
+import { resolveCommandCwd, type PathContext } from "@/utils/path";
 
 /**
  * 执行构建命令（实时输出）
@@ -15,18 +15,15 @@ export async function runBuildCommand(
     return;
   }
 
-  const { command: finalCommand, scriptDir } = parseScriptCommand(
+  // 使用统一的路径解析（客户端不在 Docker 环境）
+  const pathContext: PathContext = { configDir };
+  const { command: finalCommand, cwd } = resolveCommandCwd(
     command,
-    configDir
+    pathContext
   );
 
-  // 决定执行目录：脚本命令在脚本目录执行，普通命令在当前工作目录执行
-  const cwd = scriptDir || process.cwd();
-
   console.log(`🔨 Running build command: ${finalCommand}`);
-  if (scriptDir) {
-    console.log(`📂 Working directory: ${cwd}`);
-  }
+  console.log(`📂 Working directory: ${cwd}`);
 
   return new Promise((resolve, reject) => {
     // 使用 stdio: "inherit" 直接继承终端，保留 TTY 特性（颜色、进度条等）

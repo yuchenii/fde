@@ -225,8 +225,8 @@ environments:
         TEST_DIR
       );
 
-      // 输出文件应该在脚本目录
-      expect(existsSync(join(scriptsDir, "script-output.txt"))).toBe(true);
+      // 输出文件应该在 configDir（TEST_DIR），因为所有命令都在 configDir 执行
+      expect(existsSync(join(TEST_DIR, "script-output.txt"))).toBe(true);
     });
   });
 

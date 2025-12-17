@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
-import { dirname, resolve, isAbsolute } from "path";
+import { dirname, resolve } from "path";
 import type { ClientConfig } from "../types";
+import { resolveDataPath, type PathContext } from "@/utils/path";
 
 /**
  * 读取客户端配置文件
@@ -16,8 +17,9 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
       throw new Error("Invalid config: missing 'environments'");
     }
 
-    // 获取配置文件所在目录（用于解析相对路径）
+    // 创建路径上下文（客户端不在 Docker 环境）
     const configDir = dirname(resolve(configPath));
+    const pathContext: PathContext = { configDir };
 
     // Merge outer-level defaults into environment configs
     const outerToken = config.token;
@@ -46,9 +48,9 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
         }
       }
 
-      // 解析 localPath 中的相对路径
-      if (envConfig.localPath && !isAbsolute(envConfig.localPath)) {
-        envConfig.localPath = resolve(configDir, envConfig.localPath);
+      // 使用统一路径解析
+      if (envConfig.localPath) {
+        envConfig.localPath = resolveDataPath(envConfig.localPath, pathContext);
       }
     }
 

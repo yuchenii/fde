@@ -210,7 +210,7 @@ fde/
 │   │   └── index.ts           # HTTP server entry point
 │   ├── utils/                 # Shared utilities
 │   │   ├── checksum.ts        # SHA256 checksum
-│   │   ├── command.ts         # Script path resolution
+│   │   ├── path.ts            # Path resolution (PathContext, resolveDataPath, resolveCommandCwd)
 │   │   ├── selfUninstall.ts   # Self-uninstall logic
 │   │   ├── selfUpdate.ts      # Self-update logic
 │   │   └── throttle.ts        # Throttle function
