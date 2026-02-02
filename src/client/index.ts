@@ -81,7 +81,7 @@ async function deploy(
 
     // 4. 执行构建命令
     if (!triggerOnly && !skipBuild && envConfig.buildCommand) {
-      await runBuildCommand(envConfig.buildCommand, configDir);
+      await runBuildCommand(envConfig.buildCommand, configDir, envConfig.env);
     }
 
     // 5. 验证本地路径存在

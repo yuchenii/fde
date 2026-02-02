@@ -3,6 +3,7 @@ import { dirname, resolve } from "path";
 import type { ServerConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
 import { resolveDataPath, type PathContext } from "@/utils/path";
+import { mergeEnvConfig } from "@/utils/env";
 
 /**
  * 在运行时读取并解析 YAML 配置文件
@@ -27,7 +28,7 @@ export async function loadConfig(configPath: string): Promise<ServerConfig> {
     if (isDocker && !process.env.HOST_CONFIG_DIR) {
       throw new Error(
         "HOST_CONFIG_DIR environment variable is required in Docker environment. " +
-          "This should be the absolute path to the config directory on the host machine."
+        "This should be the absolute path to the config directory on the host machine."
       );
     }
 
@@ -38,11 +39,17 @@ export async function loadConfig(configPath: string): Promise<ServerConfig> {
       hostConfigDir: process.env.HOST_CONFIG_DIR,
     };
 
-    // 解析环境配置中的路径
-    for (const env of Object.values(config.environments)) {
-      if (env.uploadPath) {
-        env.uploadPath = resolveDataPath(env.uploadPath, pathContext);
+    // 顶层 env 配置
+    const outerEnv = config.env;
+
+    // 解析环境配置中的路径和合并 env
+    for (const [envName, envConfig] of Object.entries(config.environments)) {
+      if (envConfig.uploadPath) {
+        envConfig.uploadPath = resolveDataPath(envConfig.uploadPath, pathContext);
       }
+
+      // 合并环境变量配置（顶层 + 环境级）
+      envConfig.env = mergeEnvConfig(outerEnv, envConfig.env);
     }
 
     // 解析日志路径

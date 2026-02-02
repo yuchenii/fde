@@ -6,6 +6,7 @@ import { promisify } from "util";
 import type { EnvironmentConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
 import { resolveCommandCwd, type PathContext } from "@/utils/path";
+import { buildEnv, type EnvConfig } from "@/utils/env";
 
 const execAsync = promisify(exec);
 
@@ -88,7 +89,8 @@ export function executeDeployCommandStream(
   deployCommand: string,
   uploadPath: string,
   configDir: string,
-  onData: (type: "stdout" | "stderr", data: string) => void
+  onData: (type: "stdout" | "stderr", data: string) => void,
+  envConfig?: EnvConfig
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     if (!deployCommand) {
@@ -104,11 +106,15 @@ export function executeDeployCommandStream(
 
     console.log(`🚀 Executing deploy command (stream): ${command}`);
 
+    // 构建子进程环境变量
+    const env = buildEnv(envConfig);
+
     // 使用 shell 执行命令
     const child = spawn(command, [], {
       cwd,
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
+      env,
     });
 
     let stdout = "";
@@ -163,7 +169,8 @@ export function executeDeployCommandStream(
 export async function executeDeployCommand(
   deployCommand: string,
   uploadPath: string,
-  configDir: string
+  configDir: string,
+  envConfig?: EnvConfig
 ): Promise<{ stdout: string; stderr: string }> {
   if (!deployCommand) {
     return { stdout: "", stderr: "" };
@@ -176,10 +183,14 @@ export async function executeDeployCommand(
     configDir
   );
 
+  // 构建子进程环境变量
+  const env = buildEnv(envConfig);
+
   console.log(`🚀 Executing deploy command: ${commandToExecute}`);
   try {
     const { stdout, stderr } = await execAsync(commandToExecute, {
       cwd,
+      env,
     });
 
     if (stdout) console.log("Command output:", stdout);

@@ -171,6 +171,7 @@ fde-client --help
 | `token`         | `string` | No       | Global `token` | Environment-specific token. Overrides global token.                          |
 | `uploadPath`    | `string` | **Yes**  | -              | Absolute path or path relative to config file where files will be extracted. |
 | `deployCommand` | `string` | **Yes**  | -              | Command executed after extraction.                                           |
+| `env`           | `object` | No       | -              | Environment variable config for deploy commands. See [docs](docs/env-config.md). |
 
 #### Client Configuration (`deploy.yaml`)
 
@@ -189,6 +190,7 @@ fde-client --help
 | `localPath`    | `string`   | **Yes**  | -                  | Local directory or file to deploy. Resolved relative to config file.         |
 | `buildCommand` | `string`   | No       | -                  | Command to run locally before upload (e.g., `npm run build`).                |
 | `exclude`      | `string[]` | No       | -                  | List of glob patterns to exclude from upload (e.g., `node_modules`, `.git`). |
+| `env`          | `object`   | No       | -                  | Environment variable config for build commands. See [docs](docs/env-config.md). |
 
 ### 🐳 Docker Support
 
@@ -206,7 +208,6 @@ docker run -d \
   -e SSH_HOST=host.docker.internal \
   -e SSH_PORT=22 \
   -e HOST_CONFIG_DIR="$(pwd)" \
-  -e NODE_ENV=production \
   -e TZ=Asia/Shanghai \
   --add-host host.docker.internal:host-gateway \
   yuchenii/fde-server:latest
@@ -220,6 +221,7 @@ See [Docker Deployment Guide](docs/docker.md) for advanced configurations.
 
 - **[Server API Reference](docs/server-api.md)**
 - **[Docker Deployment Guide](docs/docker.md)**
+- **[Environment Variable Configuration](docs/env-config.md)**
 - **[Path Resolution](docs/path-resolution.md)**
 - **[Changelog](CHANGELOG.md)**
 

@@ -69,7 +69,6 @@ docker run -d \
   -e SSH_HOST=host.docker.internal \
   -e SSH_PORT=22 \
   -e HOST_CONFIG_DIR="$(pwd)" \
-  -e NODE_ENV=production \
   -e TZ=Asia/Shanghai \
   --add-host host.docker.internal:host-gateway \
   yuchenii/fde-server:latest
@@ -113,7 +112,6 @@ services:
       - SSH_PORT=22
       # Server config path, used to resolve relative paths in deployCommand
       - HOST_CONFIG_DIR=/data/projects/app
-      - NODE_ENV=production
       - TZ=Asia/Shanghai
 
     restart: unless-stopped

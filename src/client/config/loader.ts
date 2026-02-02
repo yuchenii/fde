@@ -2,6 +2,7 @@ import yaml from "js-yaml";
 import { dirname, resolve } from "path";
 import type { ClientConfig } from "../types";
 import { resolveDataPath, type PathContext } from "@/utils/path";
+import { mergeEnvConfig } from "@/utils/env";
 
 /**
  * 读取客户端配置文件
@@ -24,6 +25,7 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
     // Merge outer-level defaults into environment configs
     const outerToken = config.token;
     const outerServerUrl = config.serverUrl;
+    const outerEnv = config.env;
 
     for (const [envName, envConfig] of Object.entries(config.environments)) {
       // Merge serverUrl
@@ -52,6 +54,9 @@ export async function loadConfig(configPath: string): Promise<ClientConfig> {
       if (envConfig.localPath) {
         envConfig.localPath = resolveDataPath(envConfig.localPath, pathContext);
       }
+
+      // 合并环境变量配置（顶层 + 环境级）
+      envConfig.env = mergeEnvConfig(outerEnv, envConfig.env);
     }
 
     // 将 configDir 添加到配置中，供后续命令执行使用

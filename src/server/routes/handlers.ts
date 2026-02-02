@@ -124,8 +124,7 @@ export async function handleDeploy(
 
     const isReconnect = lastEventId !== null;
     console.log(
-      `\n📨 Received deploy request for env: ${env || "undefined"}${
-        stream ? " (stream mode)" : ""
+      `\n📨 Received deploy request for env: ${env || "undefined"}${stream ? " (stream mode)" : ""
       }${isReconnect ? ` (reconnect from id: ${lastEventId})` : ""}`
     );
 
@@ -170,7 +169,8 @@ export async function handleDeploy(
     const deployResult = await executeDeployCommand(
       validation.envConfig!.deployCommand,
       validation.envConfig!.uploadPath,
-      config.configDir
+      config.configDir,
+      validation.envConfig!.env
     );
 
     // 部署成功后检查并轮转日志文件
@@ -243,7 +243,8 @@ function handleDeployStream(
             // 添加到缓冲并获取ID
             const id = addOutput(env, "output", { type, data });
             sendEvent("output", { type, data }, id);
-          }
+          },
+          validation.envConfig.env
         );
 
         // 轮转日志
@@ -443,12 +444,12 @@ export async function handleDeployStatus(
       bufferedCount: status.bufferedCount,
       lastResult: status.lastResult
         ? {
-            success: status.lastResult.success,
-            startTime: status.lastResult.startTime.toISOString(),
-            endTime: status.lastResult.endTime.toISOString(),
-            exitCode: status.lastResult.exitCode,
-            message: status.lastResult.message,
-          }
+          success: status.lastResult.success,
+          startTime: status.lastResult.startTime.toISOString(),
+          endTime: status.lastResult.endTime.toISOString(),
+          exitCode: status.lastResult.exitCode,
+          message: status.lastResult.message,
+        }
         : null,
     });
   } catch (error: any) {

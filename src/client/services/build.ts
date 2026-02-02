@@ -1,14 +1,17 @@
 import { spawn } from "child_process";
 import { resolveCommandCwd, type PathContext } from "@/utils/path";
+import { buildEnv, type EnvConfig } from "@/utils/env";
 
 /**
  * 执行构建命令（实时输出）
  * @param command 构建命令
  * @param configDir 配置文件所在目录（用于解析相对路径脚本）
+ * @param envConfig 环境变量配置（可选）
  */
 export async function runBuildCommand(
   command: string,
-  configDir: string
+  configDir: string,
+  envConfig?: EnvConfig
 ): Promise<void> {
   if (!command || command.trim() === "") {
     console.log("⏭️  No build command specified");
@@ -25,12 +28,16 @@ export async function runBuildCommand(
   console.log(`🔨 Running build command: ${finalCommand}`);
   console.log(`📂 Working directory: ${cwd}`);
 
+  // 构建子进程环境变量
+  const env = buildEnv(envConfig);
+
   return new Promise((resolve, reject) => {
     // 使用 stdio: "inherit" 直接继承终端，保留 TTY 特性（颜色、进度条等）
     const child = spawn(finalCommand, {
       cwd,
       shell: true,
       stdio: "inherit",
+      env,
     });
 
     child.on("close", (code) => {
