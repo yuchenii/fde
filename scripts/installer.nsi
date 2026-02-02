@@ -8,7 +8,7 @@
 ; 基本配置
 ;-------------------------------------------
 !define PRODUCT_NAME "FDE"
-!define PRODUCT_VERSION "1.4.4"
+!define PRODUCT_VERSION "1.4.5"
 !define PRODUCT_PUBLISHER "yuchenii"
 !define PRODUCT_WEB_SITE "https://github.com/yuchenii/fde"
 
