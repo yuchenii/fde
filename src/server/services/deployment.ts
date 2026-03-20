@@ -39,12 +39,20 @@ function getSshCommand(
     pathContext
   );
 
+  // uploadPath 是容器路径（/app/deploy-packages/...），需要转换为宿主机路径
+  // 通过将 /app 前缀替换为宿主机配置目录（configDir 已经是 HOST_CONFIG_DIR）
+  const hostUploadPath = uploadPath.startsWith("/app/")
+    ? join(configDir, uploadPath.slice("/app/".length))
+    : uploadPath.startsWith("/app")
+      ? configDir
+      : uploadPath;
+
   // 构建 SSH 命令
   // -o StrictHostKeyChecking=no 避免首次连接交互
   // -o UserKnownHostsFile=/dev/null 避免写入 known_hosts
   // -o IdentitiesOnly=yes 避免尝试所有 key 导致 Too many authentication failures
   // -o LogLevel=ERROR 只显示错误，隐藏警告信息（如首次添加known_hosts的警告）
-  const innerCommand = `mkdir -p '${uploadPath}' && cd '${scriptCwd}' && ${finalDeployCommand}`;
+  const innerCommand = `mkdir -p '${hostUploadPath}' && cd '${scriptCwd}' && ${finalDeployCommand}`;
 
   const command = `ssh -p ${sshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o LogLevel=ERROR -i ${privateKeyPath} ${sshUser}@${sshHost} "${innerCommand.replace(
     /"/g,
