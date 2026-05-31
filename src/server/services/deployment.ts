@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join, basename, resolve, sep } from "path";
 import { mkdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { exec, spawn } from "child_process";
@@ -217,6 +217,31 @@ export async function executeDeployCommand(
 }
 
 /**
+ * 校验 zip 条目路径不会逃逸出目标目录（防止 Zip Slip）
+ */
+export function assertSafeZipEntries(
+  entries: string[],
+  baseDir: string
+): void {
+  const baseResolved = resolve(baseDir);
+  const basePrefix = baseResolved.endsWith(sep)
+    ? baseResolved
+    : baseResolved + sep;
+
+  for (const entry of entries) {
+    if (!entry) continue;
+    const normalized = entry.replace(/\\/g, "/");
+    const resolved = resolve(baseResolved, normalized);
+
+    if (resolved !== baseResolved && !resolved.startsWith(basePrefix)) {
+      throw new Error(
+        `Zip entry contains unsafe path: ${entry}. Possible Zip Slip attack.`
+      );
+    }
+  }
+}
+
+/**
  * 解压 zip 文件并部署
  */
 export async function extractAndDeploy(
@@ -239,8 +264,13 @@ export async function extractAndDeploy(
       console.log(`📁 Created deploy directory: ${uploadPath}`);
     }
 
-    // 解压 Zip 文件
+    // 解压 Zip 文件（先校验条目路径，防止 Zip Slip）
     console.log(`📂 Extracting to ${uploadPath}...`);
+
+    // 用 unzip -Z1 列出条目（每行一个文件名），校验不会逃逸出目标目录
+    const { stdout: zipList } = await execAsync(`unzip -Z1 ${tempZipPath}`);
+    assertSafeZipEntries(zipList.split("\n").filter(Boolean), uploadPath);
+
     await execAsync(`unzip -o ${tempZipPath} -d ${uploadPath}`);
     console.log(`✅ Files extracted successfully`);
 
@@ -270,8 +300,12 @@ export async function saveFile(
       console.log(`📁 Created deploy directory: ${uploadPath}`);
     }
 
-    // 保存文件
-    const filePath = join(uploadPath, fileName);
+    // 保存文件（净化文件名，防止路径穿越）
+    const safeFileName = basename(fileName);
+    if (!safeFileName || safeFileName === "." || safeFileName === "..") {
+      throw new Error(`Invalid file name: ${fileName}`);
+    }
+    const filePath = join(uploadPath, safeFileName);
     await Bun.write(filePath, fileBuffer);
     console.log(`💾 File saved to: ${filePath}`);
     console.log(`📄 File size: ${(fileBuffer.length / 1024).toFixed(2)} KB`);

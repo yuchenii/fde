@@ -1,5 +1,13 @@
+import { createHash, timingSafeEqual } from "crypto";
 import type { ServerConfig, EnvironmentConfig } from "../types";
 import { verifyChecksum, calculateChecksum } from "@/utils/checksum";
+
+/** 恒时比较字符串（哈希后比较，避免长度差异泄露） */
+function secureCompareStrings(a: string, b: string): boolean {
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
 
 /**
  * 校验文件的 SHA256 校验和
@@ -85,7 +93,7 @@ export function validateRequest(
     return { valid: false, error: "Missing authorization token" };
   }
 
-  if (token !== validToken) {
+  if (!secureCompareStrings(token, validToken)) {
     return { valid: false, error: "Invalid token" };
   }
 
