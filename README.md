@@ -46,11 +46,21 @@ iwr -useb https://raw.githubusercontent.com/yuchenii/fde/main/scripts/install.ps
 
 On your **server**, create a `server.yaml` file:
 
+Generate a random token first:
+
+```bash
+openssl rand -hex 32
+```
+
 ```yaml
 port: 3000 # Port to listen on
+limits:
+  chunkStorageMB: 10240 # Total chunk storage (10 GiB)
+  chunkFileMB: 10240 # Per-file chunk upload limit (10 GiB)
+  zipExtractMB: 2048 # Maximum uncompressed ZIP size (2 GiB)
 environments:
   prod:
-    token: "my-secret-token" # Security token for this environment
+    token: "<64-hex-token>" # Paste the generated token here
     uploadPath: "/var/www/html" # Where files will be extracted
     deployCommand: "nginx -s reload" # Command to run after extraction
 ```
@@ -67,14 +77,16 @@ fde-server start -c server.yaml
 fde-server start -d -c server.yaml
 ```
 
+Resource limits are configured in `server.yaml`. Capacity values use MB; `chunkFileMB` defaults to `chunkStorageMB` and cannot exceed it.
+
 ### 4. Deploy
 
 On your **local machine** (where your code is), create a `deploy.yaml` file:
 
 ```yaml
 # Optional: Outer-level defaults
-token: "my-secret-token" # Global token fallback
-serverUrl: "http://your-server-ip:3000" # Global server URL fallback
+token: "<64-hex-token>" # Global token fallback. Same token as the server
+serverUrl: "https://deploy.example.com" # Global server URL fallback. Use HTTPS outside a trusted private network
 
 environments:
   prod:
@@ -88,6 +100,8 @@ Then run the deploy command:
 ```bash
 fde-client deploy -e prod
 ```
+
+Plain HTTP is supported only for trusted private networks. For public or otherwise untrusted networks, expose FDE through a TLS reverse proxy. FDE uses `X-Real-IP` for authentication throttling when present, so the proxy must overwrite it with the direct client address and clients must not be able to bypass the proxy.
 
 ---
 
@@ -163,6 +177,9 @@ fde-client --help
 | `log.path`       | `string` | No       | `./fde-server.log` | Path to the log file. Resolved relative to config file.            |
 | `log.maxSize`    | `number` | No       | `10`               | Maximum log file size in MB before rotation.                       |
 | `log.maxBackups` | `number` | No       | `5`                | Number of rotated log files to keep.                               |
+| `limits.chunkStorageMB` | `number` | No | `10240` | Total reserved chunk storage in MB. |
+| `limits.chunkFileMB` | `number` | No | Same as chunk storage | Per-file chunk upload limit in MB. |
+| `limits.zipExtractMB` | `number` | No | `2048` | Maximum uncompressed ZIP size in MB. |
 
 **Environment Object (`environments.<name>`):**
 
@@ -204,7 +221,7 @@ docker run -d \
   -v "${HOME}/.ssh/fde_docker:/root/.ssh/id_rsa:ro" \
   -v "./deploy-packages:/app/deploy-packages" \
   -v "./logs:/app/logs" \
-  -e SSH_USER=yuchen \
+  -e SSH_USER=fde-deploy \
   -e SSH_HOST=host.docker.internal \
   -e SSH_PORT=22 \
   -e HOST_CONFIG_DIR="$(pwd)" \
@@ -212,6 +229,8 @@ docker run -d \
   --add-host host.docker.internal:host-gateway \
   yuchenii/fde-server:latest
 ```
+
+This example publishes FDE directly to a trusted private network. When a TLS reverse proxy runs on the same host, use `-p 127.0.0.1:3000:3000` instead.
 
 See [Docker Deployment Guide](docs/docker.md) for advanced configurations.
 

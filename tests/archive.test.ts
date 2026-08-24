@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
+import { dirname, join } from "path";
 import { rm, mkdir, writeFile } from "fs/promises";
-import { createZipArchive } from "../src/client/services/archive";
+import {
+  createZipArchive,
+  withTempZip,
+} from "../src/client/services/archive";
 import AdmZip from "adm-zip";
 
 describe("Archive Tests", () => {
@@ -70,5 +73,23 @@ describe("Archive Tests", () => {
 
     const { existsSync } = await import("fs");
     expect(existsSync(outputZip)).toBe(true);
+  });
+
+  it("should isolate and clean concurrent temporary archives", async () => {
+    const { existsSync } = await import("fs");
+    const createTempArchive = () =>
+      withTempZip(TEST_FILES_DIR, "same-env", [], async (zipPath) => {
+        expect(existsSync(zipPath)).toBe(true);
+        return zipPath;
+      });
+
+    const [firstPath, secondPath] = await Promise.all([
+      createTempArchive(),
+      createTempArchive(),
+    ]);
+
+    expect(firstPath).not.toBe(secondPath);
+    expect(existsSync(dirname(firstPath))).toBe(false);
+    expect(existsSync(dirname(secondPath))).toBe(false);
   });
 });

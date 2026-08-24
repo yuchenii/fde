@@ -14,6 +14,12 @@ log:
   # Maximum number of log backups (default: 5)
   maxBackups: 5
 
+# Upload and extraction limits (optional, unit: MB)
+limits:
+  chunkStorageMB: 10240 # Total reserved chunk storage (10 GiB)
+  chunkFileMB: 10240 # Per-file chunk upload limit (10 GiB)
+  zipExtractMB: 2048 # Maximum uncompressed ZIP size (2 GiB)
+
 # Environments
 environments:
   # Production environment

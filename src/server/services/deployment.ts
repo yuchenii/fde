@@ -1,14 +1,23 @@
 import { join, basename, resolve, sep } from "path";
-import { mkdir, rm } from "fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, rm, stat } from "fs/promises";
 import { existsSync } from "fs";
-import { exec, spawn } from "child_process";
+import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
-import type { EnvironmentConfig } from "../types";
+import { tmpdir } from "os";
+import type { EnvironmentConfig, ServerLimitsConfig } from "../types";
+import { resolveServerLimits } from "../config/limits";
 import { isDockerEnvironment } from "../utils/env";
 import { resolveCommandCwd, type PathContext } from "@/utils/path";
 import { buildEnv, type EnvConfig } from "@/utils/env";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+const DEFAULT_LIMITS = resolveServerLimits();
+const MAX_EXTRACT_SIZE = DEFAULT_LIMITS.zipExtractBytes;
+// 条目数是固定的内部防护；用户可配置的是解压后总字节数。
+const MAX_ZIP_ENTRIES = 100_000;
+// unzip 清单本身也必须受限，避免超长文件名先占满进程内存。
+const MAX_ZIP_LISTING_BYTES = 64 * 1024 * 1024;
 
 /**
  * 获取 SSH 执行命令
@@ -231,6 +240,11 @@ export function assertSafeZipEntries(
   for (const entry of entries) {
     if (!entry) continue;
     const normalized = entry.replace(/\\/g, "/");
+    if (normalized.split("/").includes("..")) {
+      throw new Error(
+        `Zip entry contains unsafe path: ${entry}. Possible Zip Slip attack.`
+      );
+    }
     const resolved = resolve(baseResolved, normalized);
 
     if (resolved !== baseResolved && !resolved.startsWith(basePrefix)) {
@@ -242,44 +256,175 @@ export function assertSafeZipEntries(
 }
 
 /**
+ * 解析 unzip 的详细清单，拒绝链接/特殊文件，并限制条目数和解压大小。
+ */
+export function assertSafeZipEntryTypes(
+  listing: string,
+  maxBytes: number = MAX_EXTRACT_SIZE
+): void {
+  const declaredEntries = listing.match(/number of entries:\s*(\d+)/i);
+  if (declaredEntries && Number(declaredEntries[1]) > MAX_ZIP_ENTRIES) {
+    throw new Error("Zip archive exceeds the entry limit");
+  }
+
+  let entries = 0;
+  let uncompressedBytes = 0;
+
+  for (const line of listing.split("\n")) {
+    const entry = line.match(
+      /^([?bcdlps-])[rwxStTs-]{9}\s+\S+\s+\S+\s+(\d+)\s/
+    );
+    if (!entry) continue;
+
+    const type = entry[1];
+    if (type !== "?" && type !== "-" && type !== "d") {
+      throw new Error(
+        "Zip archive contains a symbolic link or unsupported special file"
+      );
+    }
+
+    entries++;
+    uncompressedBytes += Number(entry[2]);
+    if (entries > MAX_ZIP_ENTRIES) {
+      throw new Error("Zip archive exceeds the entry limit");
+    }
+    if (uncompressedBytes > maxBytes) {
+      throw new Error("Zip archive exceeds the extraction limit");
+    }
+  }
+
+  if (declaredEntries && entries !== Number(declaredEntries[1])) {
+    throw new Error("Zip archive contains an unsupported entry type");
+  }
+}
+
+/**
+ * 获取受大小限制的 ZIP 清单，避免大量或超长文件名占满进程内存。
+ */
+async function getZipListing(zipPath: string, args: string[]): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("unzip", [...args, zipPath], {
+      maxBuffer: MAX_ZIP_LISTING_BYTES,
+    });
+    return stdout;
+  } catch (error: any) {
+    if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      throw new Error("Zip archive exceeds the listing limit");
+    }
+    throw error;
+  }
+}
+
+/** 校验目标路径的已有父级均不是符号链接，避免解压写出部署目录。 */
+export async function assertNoSymlinkTargets(
+  entries: string[],
+  baseDir: string
+): Promise<void> {
+  for (const entry of entries) {
+    let current = resolve(baseDir);
+    for (const segment of entry.replace(/\\/g, "/").split("/")) {
+      if (!segment || segment === ".") continue;
+      current = join(current, segment);
+      try {
+        if ((await lstat(current)).isSymbolicLink()) {
+          throw new Error(`Zip entry targets a symbolic link: ${entry}`);
+        }
+      } catch (error: any) {
+        if (error?.code === "ENOENT") break;
+        throw error;
+      }
+    }
+  }
+}
+
+/** 对磁盘上的 ZIP 完成全部校验后，再解压到部署目录。 */
+export async function extractFileAndDeploy(
+  zipPath: string,
+  envConfig: EnvironmentConfig,
+  limitsConfig?: ServerLimitsConfig
+): Promise<void> {
+  const uploadPath = envConfig.uploadPath;
+
+  // 确保部署目录存在
+  if (!existsSync(uploadPath)) {
+    await mkdir(uploadPath, { recursive: true });
+    console.log(`📁 Created deploy directory: ${uploadPath}`);
+  }
+
+  console.log(`📂 Extracting to ${uploadPath}...`);
+
+  // 先校验条目类型、数量和解压后大小，再执行逐路径检查。
+  const limits = resolveServerLimits(limitsConfig);
+  const zipDetails = await getZipListing(zipPath, ["-Z", "-l"]);
+  assertSafeZipEntryTypes(zipDetails, limits.zipExtractBytes);
+
+  // 用 unzip -Z1 列出条目，校验路径不会逃逸或写入已有符号链接。
+  const zipList = await getZipListing(zipPath, ["-Z1"]);
+  const zipEntries = zipList.split("\n").filter(Boolean);
+  assertSafeZipEntries(zipEntries, uploadPath);
+  await assertNoSymlinkTargets(zipEntries, uploadPath);
+
+  // 校验通过后才解压到部署目录。
+  await execFileAsync("unzip", ["-o", zipPath, "-d", uploadPath]);
+  console.log(`✅ Files extracted successfully`);
+}
+
+/**
  * 解压 zip 文件并部署
  */
 export async function extractAndDeploy(
   zipBuffer: Buffer,
   fileName: string,
   envConfig: EnvironmentConfig,
-  env: string
+  env: string,
+  limitsConfig?: ServerLimitsConfig
 ): Promise<void> {
   const uploadPath = envConfig.uploadPath;
-  const tempZipPath = join("/tmp", `deploy-${env}-${Date.now()}.zip`);
+  const tempDir = await mkdtemp(join(tmpdir(), "fde-deploy-"));
+  const tempZipPath = join(tempDir, "upload.zip");
 
   try {
     // 保存上传的 Zip 文件
     await Bun.write(tempZipPath, zipBuffer);
     console.log(`📦 Zip file saved to ${tempZipPath}`);
 
-    // 确保部署目录存在
-    if (!existsSync(uploadPath)) {
-      await mkdir(uploadPath, { recursive: true });
-      console.log(`📁 Created deploy directory: ${uploadPath}`);
-    }
-
-    // 解压 Zip 文件（先校验条目路径，防止 Zip Slip）
-    console.log(`📂 Extracting to ${uploadPath}...`);
-
-    // 用 unzip -Z1 列出条目（每行一个文件名），校验不会逃逸出目标目录
-    const { stdout: zipList } = await execAsync(`unzip -Z1 ${tempZipPath}`);
-    assertSafeZipEntries(zipList.split("\n").filter(Boolean), uploadPath);
-
-    await execAsync(`unzip -o ${tempZipPath} -d ${uploadPath}`);
-    console.log(`✅ Files extracted successfully`);
-
-    // 清理临时文件
-    await rm(tempZipPath, { force: true });
+    await extractFileAndDeploy(tempZipPath, envConfig, limitsConfig);
   } catch (error) {
     console.error(`❌ Extraction failed:`, error);
     throw error;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch((error) =>
+      console.warn(
+        `Failed to clean deployment temp directory ${tempDir}:`,
+        error
+      )
+    );
   }
+}
+
+/** 从临时文件复制普通上传，并净化文件名及检查符号链接目标。 */
+export async function saveFileFromPath(
+  sourcePath: string,
+  fileName: string,
+  envConfig: EnvironmentConfig
+): Promise<void> {
+  const uploadPath = envConfig.uploadPath;
+  if (!existsSync(uploadPath)) {
+    await mkdir(uploadPath, { recursive: true });
+    console.log(`📁 Created deploy directory: ${uploadPath}`);
+  }
+
+  const safeFileName = basename(fileName);
+  if (!safeFileName || safeFileName === "." || safeFileName === "..") {
+    throw new Error(`Invalid file name: ${fileName}`);
+  }
+
+  await assertNoSymlinkTargets([safeFileName], uploadPath);
+  const filePath = join(uploadPath, safeFileName);
+  await copyFile(sourcePath, filePath);
+  const fileSize = (await stat(sourcePath)).size;
+  console.log(`💾 File saved to: ${filePath}`);
+  console.log(`📄 File size: ${(fileSize / 1024).toFixed(2)} KB`);
 }
 
 /**
@@ -305,6 +450,7 @@ export async function saveFile(
     if (!safeFileName || safeFileName === "." || safeFileName === "..") {
       throw new Error(`Invalid file name: ${fileName}`);
     }
+    await assertNoSymlinkTargets([safeFileName], uploadPath);
     const filePath = join(uploadPath, safeFileName);
     await Bun.write(filePath, fileBuffer);
     console.log(`💾 File saved to: ${filePath}`);

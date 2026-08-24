@@ -23,6 +23,14 @@ import { checkAndUpdate } from "@/utils/selfUpdate";
 import { uninstall } from "@/utils/selfUninstall";
 import { logger } from "./utils/logger";
 import { isDockerEnvironment } from "./utils/env";
+import {
+  clearAuthFailures,
+  getAuthRetryAfter,
+  recordAuthFailure,
+} from "./services/validation";
+import type { Server } from "bun";
+
+type RouteHandler = (req: Request) => Response | Promise<Response>;
 
 /**
  * 启动服务器
@@ -90,7 +98,38 @@ export async function startServer(configPath: string) {
     )
   );
 
-  const server = Bun.serve({
+  let server: Server<any>;
+  /** 给所有需要 Token 的路由统一增加按来源 IP 的失败限速。 */
+  const withAuthRateLimit = (handler: RouteHandler): RouteHandler => {
+    return async (req) => {
+      // 部署文档要求 Nginx 重写 X-Real-IP；直连时回退到真实连接地址。
+      const realIp = req.headers.get("x-real-ip")?.trim();
+      const clientId =
+        realIp || server.requestIP(req)?.address || "unknown";
+      const retryAfter = getAuthRetryAfter(clientId);
+
+      if (retryAfter > 0) {
+        return Response.json(
+          { error: "Too many authentication failures" },
+          {
+            status: 429,
+            headers: { "Retry-After": retryAfter.toString() },
+          }
+        );
+      }
+
+      const response = await handler(req);
+      // 只有认证失败才累计；成功认证后清除该来源的连续失败记录。
+      if (response.status === 403) {
+        recordAuthFailure(clientId);
+      } else if (response.ok) {
+        clearAuthFailures(clientId);
+      }
+      return response;
+    };
+  };
+
+  server = Bun.serve({
     port: config.port,
 
     // 允许大文件上传 (默认是 128MB，这里设置为 1GB)
@@ -104,15 +143,15 @@ export async function startServer(configPath: string) {
     routes: {
       // 精确路由 - 最具体的路由放在前面
       "/upload": {
-        POST: async (req: Request) => handleUpload(req, config),
+        POST: withAuthRateLimit((req) => handleUpload(req, config)),
       },
 
       "/deploy": {
-        POST: async (req: Request) => handleDeploy(req, config),
+        POST: withAuthRateLimit((req) => handleDeploy(req, config)),
       },
 
       "/deploy/status": {
-        GET: async (req: Request) => handleDeployStatus(req, config),
+        GET: withAuthRateLimit((req) => handleDeployStatus(req, config)),
       },
 
       "/ping": {
@@ -124,28 +163,28 @@ export async function startServer(configPath: string) {
       },
 
       "/verify": {
-        POST: async (req: Request) => handleVerify(req, config),
+        POST: withAuthRateLimit((req) => handleVerify(req, config)),
       },
 
       // 分片上传路由
       "/upload/status": {
-        GET: async (req: Request) => handleUploadStatus(req, config),
+        GET: withAuthRateLimit((req) => handleUploadStatus(req, config)),
       },
 
       "/upload/init": {
-        POST: async (req: Request) => handleUploadInit(req, config),
+        POST: withAuthRateLimit((req) => handleUploadInit(req, config)),
       },
 
       "/upload/chunk": {
-        POST: async (req: Request) => handleUploadChunk(req, config),
+        POST: withAuthRateLimit((req) => handleUploadChunk(req, config)),
       },
 
       "/upload/complete": {
-        POST: async (req: Request) => handleUploadComplete(req, config),
+        POST: withAuthRateLimit((req) => handleUploadComplete(req, config)),
       },
 
       "/upload/cancel": {
-        DELETE: async (req: Request) => handleUploadCancel(req, config),
+        DELETE: withAuthRateLimit((req) => handleUploadCancel(req, config)),
       },
 
       // 全局捕获 - 404 兜底，处理所有未匹配的路由
@@ -166,7 +205,6 @@ export async function startServer(configPath: string) {
       return Response.json(
         {
           error: "Internal server error",
-          details: error.message,
         },
         { status: 500 }
       );
@@ -178,6 +216,11 @@ export async function startServer(configPath: string) {
 
   console.log(
     chalk.green(`✅ Server is running at http://localhost:${server.port}`)
+  );
+  console.log(
+    chalk.yellow(
+      "🔒 Use plain HTTP only on a trusted private network; otherwise terminate TLS at a reverse proxy."
+    )
   );
   return server;
 }

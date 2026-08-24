@@ -151,6 +151,36 @@ environments:
 
     expect(env.uploadPath).toBe(absolutePath);
   });
+
+  it("should load limits in MB and reject expressions", async () => {
+    const configContent = `
+port: 3000
+limits:
+  chunkStorageMB: 2048
+  chunkFileMB: 1024
+  zipExtractMB: 512
+environments:
+  test:
+    uploadPath: "./deploy"
+    deployCommand: "echo test"
+`;
+    await writeFile(TEST_CONFIG_PATH, configContent);
+
+    const config = await loadServerConfig(TEST_CONFIG_PATH);
+    expect(config.limits).toEqual({
+      chunkStorageMB: 2048,
+      chunkFileMB: 1024,
+      zipExtractMB: 512,
+    });
+
+    await writeFile(
+      TEST_CONFIG_PATH,
+      configContent.replace("2048", "1024*2")
+    );
+    await expect(loadServerConfig(TEST_CONFIG_PATH)).rejects.toThrow(
+      /Failed to load config/
+    );
+  });
 });
 
 describe("Checksum Utility", () => {

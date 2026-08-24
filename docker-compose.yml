@@ -1,4 +1,3 @@
-version: '3'
 services:
   fde-server:
     # Use build for local development, use image for production
@@ -11,10 +10,12 @@ services:
     # For docker to connect to host machine
     extra_hosts:
       - host.docker.internal:host-gateway
-    
+
     ports:
+      # Trusted private network direct access. With a same-host TLS proxy,
+      # use 127.0.0.1:3000:3000 instead.
       - 3000:3000
-    
+
     volumes:
       # Server config
       - ./server.yaml:/app/server.yaml:ro
@@ -24,10 +25,10 @@ services:
       - ./deploy-packages:/app/deploy-packages
       # Logs
       - ./logs:/app/logs
-    
+
     environment:
-      # Change to your host machine username
-      - SSH_USER=yuchen
+      # Dedicated deployment user on the host machine
+      - SSH_USER=fde-deploy
       # Change to your host docker gateway ip, usually 172.17.0.1
       - SSH_HOST=host.docker.internal
       # Change to your host machine ssh port
@@ -35,5 +36,5 @@ services:
       # Server config path, used to resolve relative paths in deployCommand
       - HOST_CONFIG_DIR=/Users/yuchen/Documents/Code/Tool/fde
       - TZ=Asia/Shanghai
-    
+
     restart: unless-stopped

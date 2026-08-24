@@ -4,6 +4,7 @@ import type { ServerConfig } from "../types";
 import { isDockerEnvironment } from "../utils/env";
 import { resolveDataPath, type PathContext } from "@/utils/path";
 import { mergeEnvConfig } from "@/utils/env";
+import { resolveServerLimits } from "./limits";
 
 /**
  * 在运行时读取并解析 YAML 配置文件
@@ -19,6 +20,8 @@ export async function loadConfig(configPath: string): Promise<ServerConfig> {
     if (!config.port || !config.environments) {
       throw new Error("Invalid config: missing 'port' or 'environments'");
     }
+    // 启动时提前验证限额，避免第一次上传时才发现配置错误。
+    resolveServerLimits(config.limits);
 
     // 配置文件所在目录
     const configFileDir = dirname(resolve(configPath));

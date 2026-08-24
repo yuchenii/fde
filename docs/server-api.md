@@ -30,6 +30,10 @@ Authorization: <your-auth-token>
 
 Token 在服务器配置文件 (`server.yaml`) 中定义。
 
+Token 应使用 `openssl rand -hex 32` 等密码学安全方式生成。连续 5 次认证失败后，同一来源会被锁定 5 分钟并返回 `429 Too Many Requests`。请求包含 `X-Real-IP` 时，服务端使用该地址；可信反向代理必须用直接客户端地址覆盖该请求头，并禁止客户端绕过代理直连。
+
+Plain HTTP 仅适用于可信私网；其他网络必须通过 TLS 反向代理访问。
+
 ## 接口列表
 
 ### 1. 基础检查 (Ping)
@@ -88,6 +92,8 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 
 使用 `multipart/form-data` 格式上传文件。适用于小文件。
 
+请求体上限为 128 MiB。服务端同时只处理一个普通上传，繁忙时返回 `503` 和 `Retry-After`；更大文件或并发上传应使用分片上传。
+
 - **URL**: `/upload`
 - **Method**: `POST`
 - **Auth Required**: Yes
@@ -106,6 +112,12 @@ Token 在服务器配置文件 (`server.yaml`) 中定义。
 ## 分片上传 (Chunk Upload)
 
 用于大文件上传，支持断点续传和并发上传。
+
+- 单个分片上限：1 MiB
+- 单任务默认最多使用全部可用分片配额，可通过 `limits.chunkFileMB` 设置更小上限
+- 默认分片空间预留上限：10 GiB，可通过 `limits.chunkStorageMB` 调整
+- `uploadId` 仅允许 1-128 个字母、数字、下划线或连字符
+- ZIP 默认最多解压 2 GiB，可通过 `limits.zipExtractMB` 调整；条目数量另有服务端固定安全上限
 
 ### 5. 初始化上传 (Init)
 

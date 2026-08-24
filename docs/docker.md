@@ -4,6 +4,8 @@
 
 为了让 Docker 容器内的 FDE Server 能够操作宿主机（例如重启 Docker 容器、执行系统命令），我们需要配置 SSH 互信。
 
+宿主机应使用权限受限的专用部署账号（下文使用 `fde-deploy`），不要授权通用 root shell。部署账号只授予实际部署命令需要的目录和服务权限。
+
 ### 1.1 生成 SSH Key (在宿主机执行)
 
 ```shell
@@ -15,7 +17,7 @@ cat ~/.ssh/fde_docker.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 
 # 检查是否配置成功，如果成功会输出 Success
-ssh -i ~/.ssh/fde_docker root@127.0.0.1 echo "Success"
+ssh -i ~/.ssh/fde_docker fde-deploy@127.0.0.1 echo "Success"
 ```
 
 ### 1.2 构建/加载镜像 (可选)
@@ -65,7 +67,7 @@ docker run -d \
   -v "${HOME}/.ssh/fde_docker:/root/.ssh/id_rsa:ro" \
   -v "./deploy-packages:/app/deploy-packages" \
   -v "./logs:/app/logs" \
-  -e SSH_USER=yuchen \
+  -e SSH_USER=fde-deploy \
   -e SSH_HOST=host.docker.internal \
   -e SSH_PORT=22 \
   -e HOST_CONFIG_DIR="$(pwd)" \
@@ -74,13 +76,13 @@ docker run -d \
   yuchenii/fde-server:latest
 ```
 
+上例适用于可信内网直连。若同一宿主机上的 Nginx 提供 TLS 入口，请把端口参数改为 `-p 127.0.0.1:3000:3000`。
+
 ### 3.2 Docker Compose (推荐)
 
 创建 `docker-compose.yml`：
 
 ```yaml
-version: "3"
-
 services:
   fde-server:
     image: yuchenii/fde-server:latest
@@ -91,6 +93,7 @@ services:
       - host.docker.internal:host-gateway
 
     ports:
+      # 可信内网直连；同机 TLS 反向代理请改为 127.0.0.1:3000:3000
       - 3000:3000
 
     volumes:
@@ -104,8 +107,8 @@ services:
       - ./logs:/app/logs
 
     environment:
-      # Change to your host machine username
-      - SSH_USER=root
+      # Dedicated deployment user on the host machine
+      - SSH_USER=fde-deploy
       # Change to your host docker gateway ip, usually 172.17.0.1
       - SSH_HOST=host.docker.internal
       # Change to your host machine ssh port
@@ -127,8 +130,8 @@ services:
 # 服务器端口
 port: 3000
 
-# 全局认证 Token (可选，如果环境配置中未指定则使用此 Token)
-token: "your-secret-token"
+# 全局认证 Token（可选，如果环境配置中未指定则使用此 Token, 可使用 `openssl rand -hex 32` 生成）
+token: "<64-hex-token>"
 
 # 日志配置
 log:
@@ -136,20 +139,34 @@ log:
   maxSize: 10 # MB
   maxBackups: 5
 
+# 上传与解压限制（容量单位：MB）
+limits:
+  chunkStorageMB: 10240 # 分片总配额，10 GiB
+  chunkFileMB: 10240 # 单文件上限，不能超过总配额
+  zipExtractMB: 2048 # ZIP 解压后总大小，2 GiB
+
 # 环境配置
 environments:
   # 测试环境
   test:
-    token: "test-token" # 覆盖全局 Token
+    token: "<test-64-hex-token>" # 覆盖全局 Token
     uploadPath: "./deploy-packages/test" # 部署包路径
     deployCommand: "./scripts/deploy-test.sh" # 部署脚本或命令
 
   # 生产环境
   prod:
-    token: "prod-token"
+    token: "<prod-64-hex-token>"
     uploadPath: "./deploy-packages/prod"
     deployCommand: "./scripts/deploy-prod.sh"
 ```
+
+### 3.4 网络安全
+
+- `http://` 只适用于可信私网。
+- 公网或其他不可信网络必须由 TLS 反向代理提供 `https://` 入口。
+- 反向代理和 FDE 在同一台主机时，建议把容器端口绑定到 `127.0.0.1`。
+- 应用会按来源地址限制认证失败次数，并在请求包含 `X-Real-IP` 时读取该地址。Nginx 应配置 `proxy_set_header X-Real-IP $remote_addr;` 覆盖客户端传入值，并禁止客户端绕过代理直连 FDE。
+- 当前关闭 SSH 主机校验的实现只适用于容器通过 `host.docker.internal` 连接同一台宿主机，不应把 `SSH_HOST` 指向远程主机。
 
 ## 4. 架构与原理
 

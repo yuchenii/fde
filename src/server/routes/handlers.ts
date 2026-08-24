@@ -1,8 +1,15 @@
 import type { ServerConfig } from "../types";
-import { validateRequest, verifyFileChecksum } from "../services/validation";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
-  extractAndDeploy,
-  saveFile,
+  hasValidToken,
+  validateRequest,
+  verifyFileChecksumFromPath,
+} from "../services/validation";
+import {
+  extractFileAndDeploy,
+  saveFileFromPath,
   executeDeployCommand,
   executeDeployCommandStream,
 } from "../services/deployment";
@@ -17,6 +24,41 @@ import {
   getLatestOutputId,
 } from "../services/deployState";
 import { VERSION } from "@/version";
+import {
+  MAX_STANDARD_UPLOAD_SIZE,
+  readJsonBody,
+  readRequestBody,
+  RequestBodyError,
+} from "../utils/request";
+
+let standardUploadActive = false;
+
+/**
+ * 普通 multipart 上传会在解析时占用较大内存，因此当前进程只允许一个。
+ */
+export function claimStandardUpload(): boolean {
+  if (standardUploadActive) return false;
+  standardUploadActive = true;
+  return true;
+}
+
+export function releaseStandardUpload(): void {
+  standardUploadActive = false;
+}
+
+/** 只向客户端返回预期错误，未知异常的细节保留在服务端日志。 */
+function routeErrorResponse(error: unknown, fallback: string): Response {
+  if (error instanceof RequestBodyError) {
+    return Response.json({ error: error.message }, { status: error.status });
+  }
+  if (
+    error instanceof Error &&
+    error.message.startsWith("Zip archive exceeds")
+  ) {
+    return Response.json({ error: error.message }, { status: 413 });
+  }
+  return Response.json({ error: fallback }, { status: 500 });
+}
 
 /**
  * POST /upload - 文件上传接口
@@ -25,16 +67,38 @@ export async function handleUpload(
   req: Request,
   config: ServerConfig
 ): Promise<Response> {
+  // 在解析 multipart 前验证 Token，避免未认证的大请求占用内存。
+  const token = req.headers.get("authorization");
+  if (!hasValidToken(token, config)) {
+    return Response.json(
+      { error: token ? "Invalid token" : "Missing authorization token" },
+      { status: 403 }
+    );
+  }
+  if (!claimStandardUpload()) {
+    return Response.json(
+      { error: "Another standard upload is in progress" },
+      { status: 503, headers: { "Retry-After": "1" } }
+    );
+  }
+
+  let tempDir: string | undefined;
   try {
     // 获取上传的文件和元数据
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    let rawBody: Buffer | undefined = await readRequestBody(
+      req,
+      MAX_STANDARD_UPLOAD_SIZE
+    );
+    const formData = await new Request(req.url, {
+      method: req.method,
+      headers: req.headers,
+      body: rawBody,
+    }).formData();
+    rawBody = undefined;
+    const file = formData.get("file");
     const env = formData.get("env") as string | null;
     const expectedChecksum = formData.get("checksum") as string | null;
     const shouldExtract = formData.get("shouldExtract") === "true";
-
-    // 获取认证token（保留在header）
-    const token = req.headers.get("authorization");
 
     console.log(`\n📨 Received upload request for env: ${env || "undefined"}`);
 
@@ -51,22 +115,27 @@ export async function handleUpload(
       );
     }
 
-    if (!file) {
+    if (!(file instanceof File)) {
       return Response.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // 读取文件为 Buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // 使用私有临时目录处理文件，避免可预测路径和完整文件 Buffer。
+    tempDir = await mkdtemp(join(tmpdir(), "fde-upload-"));
+    const tempFilePath = join(tempDir, "upload.bin");
+    await Bun.write(tempFilePath, file);
 
     console.log(
-      `📤 Received file: ${file.name} (${(buffer.length / 1024).toFixed(2)} KB)`
+      `📤 Received file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`
     );
 
     console.log(`🔍 Should extract: ${shouldExtract}`);
 
     // 校验文件完整性
-    const checksumResult = verifyFileChecksum(buffer, expectedChecksum);
+    const checksumResult = await verifyFileChecksumFromPath(
+      tempFilePath,
+      file.size,
+      expectedChecksum
+    );
     if (checksumResult.error) {
       return checksumResult.error;
     }
@@ -75,10 +144,14 @@ export async function handleUpload(
     // 根据标记决定处理方式
     if (shouldExtract) {
       // 解压模式：解压 zip 到目录
-      await extractAndDeploy(buffer, file.name, validation.envConfig!, env!);
+      await extractFileAndDeploy(
+        tempFilePath,
+        validation.envConfig!,
+        config.limits
+      );
     } else {
       // 直接保存模式：保存单个文件
-      await saveFile(buffer, file.name, validation.envConfig!, env!);
+      await saveFileFromPath(tempFilePath, file.name, validation.envConfig!);
     }
 
     console.log(`✅ File processing completed`);
@@ -87,20 +160,21 @@ export async function handleUpload(
       success: true,
       message: "File uploaded and processed successfully",
       fileName: file.name,
-      fileSize: buffer.length,
+      fileSize: file.size,
       checksumVerified,
       extracted: shouldExtract,
       uploadPath: validation.envConfig!.uploadPath,
     });
   } catch (error: any) {
     console.error(`❌ Upload error:`, error);
-    return Response.json(
-      {
-        error: "Upload failed",
-        details: error.message,
-      },
-      { status: 500 }
-    );
+    return routeErrorResponse(error, "Upload failed");
+  } finally {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch((error) =>
+        console.warn(`Failed to clean upload temp directory ${tempDir}:`, error)
+      );
+    }
+    releaseStandardUpload();
   }
 }
 
@@ -115,7 +189,7 @@ export async function handleDeploy(
 ): Promise<Response> {
   try {
     // 获取环境参数
-    const body = (await req.json()) as { env: string; stream?: boolean };
+    const body = await readJsonBody<{ env: string; stream?: boolean }>(req);
     const { env, stream } = body;
 
     // 获取认证token和续接ID
@@ -185,10 +259,12 @@ export async function handleDeploy(
     });
   } catch (error: any) {
     console.error(`❌ Server error:`, error);
+    if (error instanceof RequestBodyError) {
+      return routeErrorResponse(error, "Invalid deploy request");
+    }
     return Response.json(
       {
         error: "Deploy command failed",
-        details: error.message,
         stdout: error.stdout || "",
         stderr: error.stderr || "",
         exitCode: error.code,
@@ -275,7 +351,6 @@ function handleDeployStream(
         console.error(`❌ Stream deploy error:`, error);
         const errorData = {
           error: "Deploy command failed",
-          details: error.message,
         };
         const id = addOutput(env, "error", errorData);
         sendEvent("error", errorData, id);
@@ -386,7 +461,6 @@ function handleDeployResume(
         console.error(`❌ SSE resume error:`, error);
         sendEvent("error", {
           error: "Resume failed",
-          details: error.message,
         });
       } finally {
         if (!isClosed) {
@@ -454,13 +528,7 @@ export async function handleDeployStatus(
     });
   } catch (error: any) {
     console.error(`❌ Deploy status error:`, error);
-    return Response.json(
-      {
-        error: "Failed to get deploy status",
-        details: error.message,
-      },
-      { status: 500 }
-    );
+    return routeErrorResponse(error, "Failed to get deploy status");
   }
 }
 
@@ -516,7 +584,7 @@ export async function handleVerify(
   config: ServerConfig
 ): Promise<Response> {
   try {
-    const body = (await req.json()) as { env: string };
+    const body = await readJsonBody<{ env: string }>(req);
     const { env } = body;
     const token = req.headers.get("authorization");
 
@@ -544,12 +612,6 @@ export async function handleVerify(
     });
   } catch (error: any) {
     console.error(`❌ Verify error:`, error);
-    return Response.json(
-      {
-        error: "Verification failed",
-        details: error.message,
-      },
-      { status: 500 }
-    );
+    return routeErrorResponse(error, "Verification failed");
   }
 }

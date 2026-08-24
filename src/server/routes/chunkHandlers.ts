@@ -1,14 +1,59 @@
 import { createHash } from "crypto";
+import { rm } from "fs/promises";
 import type { ServerConfig } from "../types";
-import { validateRequest, verifyFileChecksum } from "../services/validation";
-import { extractAndDeploy, saveFile } from "../services/deployment";
+import {
+  validateRequest,
+  verifyFileChecksumFromPath,
+} from "../services/validation";
+import {
+  extractFileAndDeploy,
+  saveFileFromPath,
+} from "../services/deployment";
 import {
   initUpload,
   getUploadStatus,
   saveChunk,
   mergeChunks,
+  releaseUploadCompletion,
   deleteUpload,
+  MAX_CHUNK_SIZE,
 } from "../services/chunkStorage";
+import {
+  readJsonBody,
+  readRequestBody,
+  RequestBodyError,
+} from "../utils/request";
+
+/** 将预期的上传错误映射为状态码，同时隐藏未知内部异常。 */
+function uploadErrorResponse(error: unknown, fallback: string): Response {
+  if (error instanceof RequestBodyError) {
+    return Response.json({ error: error.message }, { status: error.status });
+  }
+
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("not found")) {
+    return Response.json({ error: message }, { status: 404 });
+  }
+  if (
+    message.includes("different metadata") ||
+    message.includes("already in progress")
+  ) {
+    return Response.json({ error: message }, { status: 409 });
+  }
+  if (message.includes("exceeds") || message.includes("exceeded")) {
+    return Response.json({ error: message }, { status: 413 });
+  }
+  if (
+    message.startsWith("Invalid ") ||
+    message.includes("outside the initialized upload range") ||
+    message.includes("escapes the chunk storage directory") ||
+    message.includes("does not match the requested environment")
+  ) {
+    return Response.json({ error: message }, { status: 400 });
+  }
+
+  return Response.json({ error: fallback }, { status: 500 });
+}
 
 /**
  * GET /upload/status - 查询上传状态
@@ -17,26 +62,30 @@ export async function handleUploadStatus(
   req: Request,
   config: ServerConfig
 ): Promise<Response> {
-  const url = new URL(req.url);
-  const uploadId = url.searchParams.get("uploadId");
-  const env = url.searchParams.get("env");
-  const token = req.headers.get("authorization");
+  try {
+    const url = new URL(req.url);
+    const uploadId = url.searchParams.get("uploadId");
+    const env = url.searchParams.get("env");
+    const token = req.headers.get("authorization");
 
-  if (!uploadId) {
-    return Response.json({ error: "Missing uploadId" }, { status: 400 });
+    if (!uploadId) {
+      return Response.json({ error: "Missing uploadId" }, { status: 400 });
+    }
+
+    // 验证请求
+    const validation = validateRequest(env, token, config);
+    if (!validation.valid) {
+      return Response.json(
+        { error: validation.error },
+        { status: validation.error?.includes("token") ? 403 : 400 }
+      );
+    }
+
+    return Response.json(await getUploadStatus(env!, uploadId));
+  } catch (error) {
+    console.error("❌ Upload status failed:", error);
+    return uploadErrorResponse(error, "Failed to get upload status");
   }
-
-  // 验证请求
-  const validation = validateRequest(env, token, config);
-  if (!validation.valid) {
-    return Response.json(
-      { error: validation.error },
-      { status: validation.error?.includes("token") ? 403 : 400 }
-    );
-  }
-
-  const status = await getUploadStatus(uploadId);
-  return Response.json(status);
 }
 
 /**
@@ -47,14 +96,14 @@ export async function handleUploadInit(
   config: ServerConfig
 ): Promise<Response> {
   try {
-    const body = (await req.json()) as {
+    const body = await readJsonBody<{
       uploadId: string;
       totalChunks: number;
       fileName: string;
       checksum?: string;
       shouldExtract: boolean;
       env: string;
-    };
+    }>(req);
 
     const token = req.headers.get("authorization");
 
@@ -75,7 +124,10 @@ export async function handleUploadInit(
       body.uploadId,
       body.totalChunks,
       body.env,
-      body.shouldExtract
+      body.shouldExtract,
+      body.fileName,
+      body.checksum,
+      config.limits
     );
 
     return Response.json({
@@ -87,10 +139,7 @@ export async function handleUploadInit(
     });
   } catch (error: any) {
     console.error("❌ Upload init failed:", error);
-    return Response.json(
-      { error: "Init failed", details: error.message },
-      { status: 500 }
-    );
+    return uploadErrorResponse(error, "Init failed");
   }
 }
 
@@ -124,21 +173,12 @@ export async function handleUploadChunk(
       );
     }
 
-    const chunkIndex = parseInt(chunkIndexStr);
-    const body = req.body;
-    if (!body) {
-      return Response.json({ error: "No chunk data" }, { status: 400 });
+    const chunkIndex = Number(chunkIndexStr);
+    // 读取分片数据时执行实际大小限制。
+    const buffer = await readRequestBody(req, MAX_CHUNK_SIZE);
+    if (buffer.length === 0) {
+      throw new RequestBodyError("No chunk data", 400);
     }
-
-    // 读取分片数据
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    const buffer = Buffer.concat(chunks);
 
     // 验证分片 MD5（如果提供）
     const expectedMd5 = req.headers.get("x-chunk-md5");
@@ -156,15 +196,18 @@ export async function handleUploadChunk(
     }
 
     // 保存分片
-    const result = await saveChunk(uploadId, chunkIndex, buffer);
+    const result = await saveChunk(
+      env!,
+      uploadId,
+      chunkIndex,
+      buffer,
+      config.limits
+    );
 
     return Response.json(result);
   } catch (error: any) {
     console.error("❌ Chunk upload failed:", error);
-    return Response.json(
-      { error: "Chunk upload failed", details: error.message },
-      { status: 500 }
-    );
+    return uploadErrorResponse(error, "Chunk upload failed");
   }
 }
 
@@ -176,13 +219,13 @@ export async function handleUploadComplete(
   config: ServerConfig
 ): Promise<Response> {
   try {
-    const body = (await req.json()) as {
+    const body = await readJsonBody<{
       uploadId: string;
       fileName: string;
       checksum?: string;
       shouldExtract: boolean;
       env: string;
-    };
+    }>(req);
 
     const token = req.headers.get("authorization");
 
@@ -198,52 +241,66 @@ export async function handleUploadComplete(
     console.log(`\n✅ Completing upload: ${body.uploadId}`);
 
     // 合并分片
-    const buffer = await mergeChunks(body.uploadId);
-    console.log(
-      `📦 Merged file size: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`
-    );
-
-    // 校验文件完整性
-    const checksumResult = verifyFileChecksum(buffer, body.checksum || null);
-    if (checksumResult.error) {
-      // 校验失败，删除上传任务
-      await deleteUpload(body.uploadId);
-      return checksumResult.error;
-    }
-    const checksumVerified = checksumResult.verified;
-
-    // 处理文件
-    if (body.shouldExtract) {
-      await extractAndDeploy(
-        buffer,
-        body.fileName,
-        validation.envConfig!,
-        body.env
+    const merged = await mergeChunks(body.env, body.uploadId);
+    try {
+      console.log(
+        `📦 Merged file size: ${(merged.size / 1024 / 1024).toFixed(2)} MB`
       );
-    } else {
-      await saveFile(buffer, body.fileName, validation.envConfig!, body.env);
+
+      // 使用初始化阶段保存的校验和验证完整文件。
+      const checksumResult = await verifyFileChecksumFromPath(
+        merged.filePath,
+        merged.size,
+        merged.metadata.checksum || null
+      );
+      if (checksumResult.error) {
+        // 校验失败后删除不可继续使用的上传任务。
+        await deleteUpload(body.env, body.uploadId, true);
+        return checksumResult.error;
+      }
+
+      // 文件名和解压标记均取自服务端初始化元数据。
+      if (merged.metadata.shouldExtract) {
+        await extractFileAndDeploy(
+          merged.filePath,
+          validation.envConfig!,
+          config.limits
+        );
+      } else {
+        await saveFileFromPath(
+          merged.filePath,
+          merged.metadata.fileName,
+          validation.envConfig!
+        );
+      }
+
+      // 处理成功后删除分片任务。
+      await deleteUpload(body.env, body.uploadId, true);
+      console.log(`✅ Upload completed and cleaned up`);
+
+      return Response.json({
+        success: true,
+        message: "File uploaded and processed successfully",
+        fileName: merged.metadata.fileName,
+        fileSize: merged.size,
+        checksumVerified: checksumResult.verified,
+        extracted: merged.metadata.shouldExtract,
+        uploadPath: validation.envConfig!.uploadPath,
+      });
+    } finally {
+      // 无论部署是否成功，都释放临时合并文件和完成锁。
+      await rm(merged.tempDir, { recursive: true, force: true }).catch(
+        (error) =>
+          console.warn(
+            `Failed to clean merged upload ${merged.tempDir}:`,
+            error
+          )
+      );
+      releaseUploadCompletion(body.env, body.uploadId);
     }
-
-    // 成功后删除上传任务
-    await deleteUpload(body.uploadId);
-
-    console.log(`✅ Upload completed and cleaned up`);
-
-    return Response.json({
-      success: true,
-      message: "File uploaded and processed successfully",
-      fileName: body.fileName,
-      fileSize: buffer.length,
-      checksumVerified,
-      extracted: body.shouldExtract,
-      uploadPath: validation.envConfig!.uploadPath,
-    });
   } catch (error: any) {
     console.error("❌ Upload complete failed:", error);
-    return Response.json(
-      { error: "Upload complete failed", details: error.message },
-      { status: 500 }
-    );
+    return uploadErrorResponse(error, "Upload complete failed");
   }
 }
 
@@ -273,14 +330,12 @@ export async function handleUploadCancel(
       );
     }
 
-    await deleteUpload(uploadId);
+    await deleteUpload(env!, uploadId);
     console.log(`🗑️ Upload cancelled: ${uploadId}`);
 
     return Response.json({ success: true, message: "Upload cancelled" });
   } catch (error: any) {
-    return Response.json(
-      { error: "Cancel failed", details: error.message },
-      { status: 500 }
-    );
+    console.error("❌ Upload cancel failed:", error);
+    return uploadErrorResponse(error, "Cancel failed");
   }
 }

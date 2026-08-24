@@ -8,8 +8,36 @@ import {
 } from "fs";
 import { dirname, basename, join } from "path";
 import cliProgress from "cli-progress";
+import { calculateChecksum } from "./checksum";
 
 const REPO = "yuchenii/fde";
+
+/** 从 SHA256SUMS.txt 中精确查找指定发布文件的校验和。 */
+export function getExpectedChecksum(
+  manifest: string,
+  fileName: string
+): string {
+  for (const line of manifest.split("\n")) {
+    const match = line.trim().match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+    if (match?.[2] === fileName) {
+      return match[1].toLowerCase();
+    }
+  }
+  throw new Error(`Checksum not found for ${fileName}`);
+}
+
+/** 在写入和替换本地可执行文件前验证下载内容。 */
+function verifyReleaseBinary(
+  buffer: ArrayBuffer,
+  fileName: string,
+  checksumManifest: string
+): void {
+  const expected = getExpectedChecksum(checksumManifest, fileName);
+  const actual = calculateChecksum(Buffer.from(buffer));
+  if (actual !== expected) {
+    throw new Error(`Checksum verification failed for ${fileName}`);
+  }
+}
 
 /**
  * Detect platform and architecture
@@ -248,6 +276,12 @@ export async function checkAndUpdate(): Promise<void> {
       isWindows ? ".exe" : ""
     }`;
     const baseUrl = `https://github.com/${REPO}/releases/download/${latestVersion}`;
+    // 清单只下载一次，当前和另一个二进制都必须先校验再落盘。
+    const checksumResponse = await fetch(`${baseUrl}/SHA256SUMS.txt`);
+    if (!checksumResponse.ok) {
+      throw new Error("Failed to download release checksums");
+    }
+    const checksumManifest = await checksumResponse.text();
 
     // Determine which file to download based on current binary
     const isServer = binaryName.includes("server");
@@ -272,6 +306,7 @@ export async function checkAndUpdate(): Promise<void> {
       `${baseUrl}/${currentFile}`,
       currentFile
     );
+    verifyReleaseBinary(buffer, currentFile, checksumManifest);
 
     // Write to temporary file first
     const tempFile = `${currentFinalPath}.tmp`;
@@ -309,6 +344,7 @@ export async function checkAndUpdate(): Promise<void> {
           `${baseUrl}/${otherFile}`,
           otherFile
         );
+        verifyReleaseBinary(otherBuffer, otherFile, checksumManifest);
 
         // Write to temporary file first
         const otherTempFile = `${otherFinalPath}.tmp`;

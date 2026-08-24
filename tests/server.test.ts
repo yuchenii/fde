@@ -106,6 +106,21 @@ environments:
 
       expect(response.status).toBe(200);
     });
+
+    it("should isolate authentication failures by real IP", async () => {
+      for (let i = 0; i < 6; i++) {
+        const response = await fetch(`${SERVER_URL}/verify`, {
+          method: "POST",
+          headers: {
+            authorization: "invalid-token",
+            "content-type": "application/json",
+            "x-real-ip": `198.51.100.${i + 1}`,
+          },
+          body: JSON.stringify({ env: "test" }),
+        });
+        expect(response.status).toBe(403);
+      }
+    });
   });
 
   describe("Token Verification", () => {
@@ -301,8 +316,8 @@ environments:
         },
         body: JSON.stringify({
           uploadId,
-          fileName: "chunk-test.txt",
-          shouldExtract: false,
+          fileName: "tampered.txt",
+          shouldExtract: true,
           env: "test",
         }),
       });
@@ -311,6 +326,7 @@ environments:
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.fileName).toBe("chunk-test.txt");
+      expect(data.extracted).toBe(false);
     });
 
     it("should return not exists for completed upload", async () => {

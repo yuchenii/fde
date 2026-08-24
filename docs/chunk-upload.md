@@ -21,7 +21,7 @@
 │  │ 验证请求  │   │ 存储分片  │   │ 合并文件  │   │   清理目录   │   │
 │  └──────────┘   └──────────┘   └──────────┘   └──────────────┘   │
 │                                                                   │
-│  临时存储: {系统临时目录}/fde-chunks/{uploadId}/                   │
+│  临时存储: {系统临时目录}/fde-chunks/{env-id}/{uploadId}/          │
 │    - macOS/Linux: /tmp/fde-chunks/                                │
 │    - Windows: %TEMP%\fde-chunks\                                  │
 └───────────────────────────────────────────────────────────────────┘
@@ -47,6 +47,23 @@
 | `INITIAL_RETRY_DELAY` | 1s     | 初始重试延迟       |
 | `MAX_RETRY_DELAY`     | 10s    | 最大重试延迟       |
 | `EXPIRY_MS`           | 24h    | 未完成上传过期时间 |
+
+服务端资源限制在 `server.yaml` 的 `limits` 中配置，容量单位为 MB：
+
+| 配置项 | 默认值 | 说明 |
+| --- | ---: | --- |
+| `limits.chunkStorageMB` | `10240` | 分片任务总预留上限（10 GiB） |
+| `limits.chunkFileMB` | 跟随总预留上限 | 单任务上限，不能超过总预留上限 |
+| `limits.zipExtractMB` | `2048` | ZIP 解压后总大小上限（2 GiB） |
+
+```yaml
+limits:
+  chunkStorageMB: 10240
+  chunkFileMB: 10240
+  zipExtractMB: 2048
+```
+
+单个分片固定限制为 1 MiB。ZIP 的 2 GiB 是 FDE 默认安全值，不是操作系统限制；ZIP 条目数量另有服务端固定安全上限。
 
 ## 上传流程
 
@@ -100,7 +117,7 @@ X-Chunk-MD5: d41d8cd98f00b204e9800998ecf8427e
 <binary chunk data>
 ```
 
-服务端验证 MD5 后存储到 `/tmp/fde-chunks/{uploadId}/chunk_000003`
+服务端验证 MD5 后，按环境隔离存储到 `/tmp/fde-chunks/{env-id}/{uploadId}/chunk_000003`。该目录调整完全发生在服务端，现有客户端协议不变。
 
 ### 4. 完成上传
 
@@ -110,9 +127,9 @@ Content-Type: application/json
 Authorization: <token>
 
 {
-  "uploadId": "abc123...",
+  "uploadId": "0123456789abcdef0123456789abcdef",
   "fileName": "dist.zip",
-  "checksum": "sha256...",
+  "checksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "shouldExtract": true,
   "env": "production"
 }
@@ -120,7 +137,7 @@ Authorization: <token>
 
 服务端：
 
-1. 合并所有分片
+1. 流式合并所有分片到私有临时文件
 2. 验证文件 SHA256
 3. 解压或保存
 4. 清理临时文件
@@ -167,7 +184,7 @@ Authorization: <token>
 
 ## 自动清理
 
-服务端每小时检查一次，删除超过 24 小时未完成的上传任务：
+服务端每小时检查一次，删除当前环境隔离目录布局中超过 24 小时未完成的上传任务：
 
 ```typescript
 // 清理调度器
@@ -194,7 +211,7 @@ src/
 
 | 特性           | 流式上传      | 分片上传    |
 | -------------- | ------------- | ----------- |
-| 大文件支持     | ⚠️ 受内存限制 | ✅ 无限制   |
+| 大文件支持     | ⚠️ 受内存限制 | ✅ 受服务端配额限制 |
 | 断点续传       | ❌            | ✅          |
 | 网络容错       | ❌ 整体失败   | ✅ 单片重试 |
 | nginx 代理进度 | ⚠️ 不准确     | ✅ 准确     |
