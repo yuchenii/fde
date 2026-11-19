@@ -9,8 +9,11 @@ dist
 .git
 .gitignore
 
-# Environment & Logs
-.env
+# Local configuration and logs
+**/server.yaml
+**/deploy.yaml
+**/.env
+**/.env.*
 logs
 *.log
 

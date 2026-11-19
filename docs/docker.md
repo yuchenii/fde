@@ -22,6 +22,8 @@ ssh -i ~/.ssh/fde_docker fde-deploy@127.0.0.1 echo "Success"
 
 ### 1.2 构建/加载镜像 (可选)
 
+镜像只包含程序和运行依赖。启动容器时，将宿主机的 `server.yaml` 只读挂载到 `/app/server.yaml`，下方的 Docker Run 和 Compose 示例都包含此挂载。
+
 如果你需要手动构建或加载镜像：
 
 ```shell

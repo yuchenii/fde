@@ -17,7 +17,8 @@ COPY package.json bun.lock ./
 RUN bun install --production
 
 # Copy source code
-COPY . .
+COPY tsconfig.json ./
+COPY src/ ./src/
 
 # Create logs and deploy directory
 RUN mkdir -p logs

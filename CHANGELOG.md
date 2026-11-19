@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Exclude local deployment credentials from Docker images. Mount `server.yaml` at `/app/server.yaml` when starting the container.
 - Make deploy cooldown configurable via `limits.deployCooldownSec` (default **`30`**, was hard-coded `5`; set `0` to disable). Same-env deploys within the window return HTTP 409; applies to both stream and non-stream `/deploy`.
 - Bind SSE reconnects and status lookups to the original deployment via `X-Deployment-ID`. Keep command diagnostics out of stored status and validate environment names before acquiring the deploy lock.
 - Harden chunk uploads with environment-isolated storage, path validation, configurable request and storage limits, and streaming merge.
