@@ -3,10 +3,10 @@
  * 管理每个环境的部署状态、输出缓冲和最终结果
  */
 
-interface OutputEntry {
+export interface OutputEntry {
   id: number;
-  event: string;
-  data: any;
+  event: "output" | "done" | "error";
+  data: unknown;
 }
 
 interface DeployResult {
@@ -14,56 +14,47 @@ interface DeployResult {
   startTime: Date;
   endTime: Date;
   exitCode: number;
-  message?: string;
 }
 
-interface DeployState {
-  running: boolean;
-  startTime?: Date;
+export interface DeployRun {
+  deploymentId: string;
+  startTime: Date;
+  firstEventId: number;
   outputBuffer: OutputEntry[];
   nextId: number;
   lastResult?: DeployResult;
+  listeners: Set<(entry: OutputEntry) => void>;
 }
 
-// 每个环境的部署状态
-const deployStates = new Map<string, DeployState>();
+const deployStates = new Map<string, { latest: DeployRun; stream?: DeployRun }>();
 
-/**
- * 获取或创建环境的部署状态
- */
-function getState(env: string): DeployState {
-  if (!deployStates.has(env)) {
-    deployStates.set(env, {
-      running: false,
-      outputBuffer: [],
-      nextId: 1,
-    });
-  }
-  return deployStates.get(env)!;
+export function getStreamDeploy(env: string): DeployRun | undefined {
+  return deployStates.get(env)?.stream;
 }
 
-/**
- * 开始新的部署
- * 清空上次结果，重置缓冲区
- */
-export function startDeploy(env: string): void {
-  const state = getState(env);
-  state.running = true;
-  state.startTime = new Date();
-  state.outputBuffer = [];
-  state.nextId = 1;
-  state.lastResult = undefined; // 清空上次结果
+export function startDeploy(env: string, streaming = false): DeployRun {
+  const previousStream = getStreamDeploy(env);
+  const firstEventId = previousStream?.nextId ?? 1;
+  const run: DeployRun = {
+    deploymentId: crypto.randomUUID(),
+    startTime: new Date(),
+    firstEventId,
+    nextId: firstEventId,
+    outputBuffer: [],
+    listeners: new Set(),
+  };
+  deployStates.set(env, { latest: run, stream: streaming ? run : previousStream });
+  return run;
 }
 
-/**
- * 添加输出到缓冲区
- * @returns 输出的序号 ID
- */
-export function addOutput(env: string, event: string, data: any): number {
-  const state = getState(env);
-  const id = state.nextId++;
-  state.outputBuffer.push({ id, event, data });
-  return id;
+export function addOutput(
+  run: DeployRun,
+  event: OutputEntry["event"],
+  data: unknown
+): void {
+  const entry = { id: run.nextId++, event, data };
+  if (event === "output") run.outputBuffer.push(entry);
+  for (const listener of run.listeners) listener(entry);
 }
 
 /**
@@ -71,59 +62,40 @@ export function addOutput(env: string, event: string, data: any): number {
  * 保存结果，清空缓冲区
  */
 export function finishDeploy(
-  env: string,
-  result: Omit<DeployResult, "startTime" | "endTime"> & { endTime?: Date }
+  run: DeployRun,
+  result: Pick<DeployResult, "success" | "exitCode">
 ): void {
-  const state = getState(env);
-  state.running = false;
-  state.lastResult = {
-    ...result,
-    startTime: state.startTime || new Date(),
-    endTime: result.endTime || new Date(),
+  run.lastResult = {
+    success: result.success,
+    exitCode: result.exitCode,
+    startTime: run.startTime,
+    endTime: new Date(),
   };
-  state.outputBuffer = []; // 清空缓冲区
-}
-
-/**
- * 获取从指定 ID 开始的输出
- * @param fromId 起始 ID（不包含），0 表示获取所有
- * @returns 输出列表
- */
-export function getOutputsFrom(env: string, fromId: number): OutputEntry[] {
-  const state = getState(env);
-  if (fromId === 0) {
-    return [...state.outputBuffer];
-  }
-  return state.outputBuffer.filter((entry) => entry.id > fromId);
-}
-
-/**
- * 检查部署是否正在运行
- */
-export function isDeploying(env: string): boolean {
-  const state = getState(env);
-  return state.running;
+  run.outputBuffer.length = 0;
 }
 
 /**
  * 检查是否应该拒绝新部署
  * 防止反向代理/网络层重复请求导致的重复部署
- * 冷却期：部署完成后 5 秒内不接受新的部署请求
+ * 冷却期：部署完成后 cooldownMs 内不接受新的部署请求（0 表示关闭冷却）
  */
-export function shouldRejectNewDeploy(env: string): {
+export function shouldRejectNewDeploy(
+  env: string,
+  cooldownMs = 30_000
+): {
   reject: boolean;
   reason?: string;
 } {
-  const state = getState(env);
+  const state = deployStates.get(env)?.latest;
+  if (!state) return { reject: false };
 
   // 正在部署中
-  if (state.running) {
+  if (!state.lastResult) {
     return { reject: true, reason: "Deployment already in progress" };
   }
 
-  // 检查冷却期（5秒）
-  if (state.lastResult) {
-    const cooldownMs = 5000;
+  // 检查冷却期
+  if (cooldownMs > 0) {
     const elapsed = Date.now() - state.lastResult.endTime.getTime();
     if (elapsed < cooldownMs) {
       return {
@@ -141,25 +113,28 @@ export function shouldRejectNewDeploy(env: string): {
 /**
  * 获取部署状态
  */
-export function getDeployStatus(env: string): {
-  running: boolean;
-  startTime?: Date;
-  bufferedCount: number;
-  lastResult?: DeployResult;
-} {
-  const state = getState(env);
+export function getDeployStatus(env: string, deploymentId: string | null = null) {
+  const state = deployStates.get(env);
+  const run = deploymentId === null || state?.latest.deploymentId === deploymentId
+    ? state?.latest
+    : state?.stream;
+  if (deploymentId !== null && run?.deploymentId !== deploymentId) return null;
   return {
-    running: state.running,
-    startTime: state.startTime,
-    bufferedCount: state.outputBuffer.length,
-    lastResult: state.lastResult,
+    deploymentId: run?.deploymentId,
+    running: !!run && !run.lastResult,
+    startTime: run?.startTime,
+    bufferedCount: run?.outputBuffer.length ?? 0,
+    lastResult: run?.lastResult ?? null,
   };
 }
 
 /**
- * 获取当前输出缓冲区的最新 ID
+ * 清除部署状态（测试用；传 env 则只清该环境，否则清空全部）
  */
-export function getLatestOutputId(env: string): number {
-  const state = getState(env);
-  return state.nextId - 1;
+export function resetDeployState(env?: string): void {
+  if (env) {
+    deployStates.delete(env);
+    return;
+  }
+  deployStates.clear();
 }

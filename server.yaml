@@ -14,11 +14,13 @@ log:
   # Maximum number of log backups (default: 5)
   maxBackups: 5
 
-# Upload and extraction limits (optional, unit: MB)
+# Upload, extraction, and deploy cooldown limits (optional)
+# Capacity fields use MB; deployCooldownSec is seconds (default 30, 0 disables)
 limits:
   chunkStorageMB: 10240 # Total reserved chunk storage (10 GiB)
   chunkFileMB: 10240 # Per-file chunk upload limit (10 GiB)
   zipExtractMB: 2048 # Maximum uncompressed ZIP size (2 GiB)
+  deployCooldownSec: 30 # Reject new deploys this many seconds after the last one finishes
 
 # Environments
 environments:

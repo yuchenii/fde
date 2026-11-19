@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { join } from "path";
 import { rm, mkdir, writeFile } from "fs/promises";
 import { startServer } from "../src/server/index";
+import { resetDeployState } from "../src/server/services/deployState";
 import type { Server } from "bun";
 
 describe("Server API Tests", () => {
@@ -16,9 +17,13 @@ describe("Server API Tests", () => {
     await mkdir(TEST_DIR, { recursive: true });
 
     // 创建测试配置文件
+    // Keep a short cooldown so sequential stream-deploy tests stay fast,
+    // while the immediate-retry case can still assert 409.
     const configContent = `
 port: 3000
 token: "${TEST_TOKEN}"
+limits:
+  deployCooldownSec: 5
 environments:
   test:
     uploadPath: "${TEST_DIR}/test"
@@ -461,6 +466,10 @@ environments:
   });
 
   describe("Deployment", () => {
+    beforeEach(() => {
+      resetDeployState("test");
+    });
+
     it("should trigger deployment", async () => {
       const response = await fetch(`${SERVER_URL}/deploy`, {
         method: "POST",
@@ -544,11 +553,17 @@ environments:
     const FAIL_CONFIG_PATH = join(process.cwd(), "test-fail-config.yaml");
     let failServer: Server<any>;
 
+    beforeEach(() => {
+      resetDeployState("fail-test");
+    });
+
     beforeAll(async () => {
       // 创建会失败的部署命令配置
       const configContent = `
 port: 3001
 token: "${FAIL_TOKEN}"
+limits:
+  deployCooldownSec: 5
 environments:
   fail-test:
     uploadPath: "${TEST_DIR}/fail-test"
@@ -628,6 +643,10 @@ environments:
   });
 
   describe("Deploy Status", () => {
+    beforeEach(() => {
+      resetDeployState("test");
+    });
+
     it("should return deploy status after successful deployment", async () => {
       // 先执行一次部署
       const deployResponse = await fetch(`${SERVER_URL}/deploy`, {
@@ -638,6 +657,8 @@ environments:
         },
         body: JSON.stringify({ env: "test", stream: true }),
       });
+
+      expect(deployResponse.status).toBe(200);
 
       // 读取完整流以等待部署完成
       const reader = deployResponse.body?.getReader();
@@ -685,10 +706,9 @@ environments:
   });
 
   describe("SSE Reconnection", () => {
-    // 等待冷却期结束
-    beforeAll(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5500));
-    }, 10000);
+    beforeEach(() => {
+      resetDeployState("test");
+    });
 
     it("should include event ids in SSE stream", async () => {
       const response = await fetch(`${SERVER_URL}/deploy`, {
@@ -729,20 +749,16 @@ environments:
         body: JSON.stringify({ env: "test", stream: true }),
       });
 
-      // 读取完所有输出
-      const reader = deployRes.body?.getReader();
-      while (true) {
-        const { done } = await reader!.read();
-        if (done) break;
-      }
+      expect(deployRes.status).toBe(200);
 
-      // 模拟重连（带 Last-Event-ID）
+      const eventId = (await deployRes.text()).match(/^id: (\d+)$/m)?.[1];
+      expect(eventId).toBeTruthy();
       const reconnectRes = await fetch(`${SERVER_URL}/deploy`, {
         method: "POST",
         headers: {
           authorization: TEST_TOKEN,
           "content-type": "application/json",
-          "last-event-id": "999999",
+          "last-event-id": eventId!,
         },
         body: JSON.stringify({ env: "test", stream: true }),
       });
@@ -764,7 +780,7 @@ environments:
       expect(fullText).toContain('"success":true');
     }, 15000);
 
-    it("should reject concurrent deploy without Last-Event-ID with 409", async () => {
+    it("should reject new deploy without Last-Event-ID during cooldown with 409", async () => {
       const deployRes = await fetch(`${SERVER_URL}/deploy`, {
         method: "POST",
         headers: {
@@ -774,6 +790,8 @@ environments:
         body: JSON.stringify({ env: "test", stream: true }),
       });
 
+      expect(deployRes.status).toBe(200);
+
       // 读取完所有输出
       const reader = deployRes.body?.getReader();
       while (true) {
@@ -781,7 +799,7 @@ environments:
         if (done) break;
       }
 
-      // 立即发起第二个部署（无 Last-Event-ID，应该被拒绝）
+      // 立即发起第二个部署（无 Last-Event-ID，应该被冷却拒绝）
       const concurrentRes = await fetch(`${SERVER_URL}/deploy`, {
         method: "POST",
         headers: {
@@ -791,10 +809,35 @@ environments:
         body: JSON.stringify({ env: "test", stream: true }),
       });
 
-      // 应该返回 409 Conflict
       expect(concurrentRes.status).toBe(409);
       const data = await concurrentRes.json();
       expect(data.error).toContain("cooldown");
     }, 15000);
+
+    it("should reject non-stream deploy during cooldown with 409", async () => {
+      const deployRes = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: false }),
+      });
+
+      expect(deployRes.status).toBe(200);
+
+      const blocked = await fetch(`${SERVER_URL}/deploy`, {
+        method: "POST",
+        headers: {
+          authorization: TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ env: "test", stream: false }),
+      });
+
+      expect(blocked.status).toBe(409);
+      const data = await blocked.json();
+      expect(data.error).toContain("cooldown");
+    });
   });
 });

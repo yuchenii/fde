@@ -1,3 +1,5 @@
+class DeployError extends Error {}
+
 /**
  * 调用部署接口（流式输出，支持断连重连）
  */
@@ -9,6 +11,7 @@ export async function triggerDeploy(
   console.log(`\n🚀 Triggering deployment...`);
 
   const maxRetries = 3;
+  let deploymentId: string | null = null;
   let lastEventId: string | null = null;
   let retryCount = 0;
 
@@ -19,10 +22,10 @@ export async function triggerDeploy(
         Authorization: token,
       };
 
-      // 如果有 lastEventId，添加到请求头用于续接
-      if (lastEventId) {
-        headers["Last-Event-ID"] = lastEventId;
-        console.log(`\n🔄 Reconnecting from event ${lastEventId}...`);
+      if (deploymentId) {
+        headers["X-Deployment-ID"] = deploymentId;
+        headers["Last-Event-ID"] = lastEventId ?? "0";
+        console.log(`\n🔄 Reconnecting from event ${headers["Last-Event-ID"]}...`);
       }
 
       const response = await fetch(`${serverUrl}/deploy`, {
@@ -42,27 +45,29 @@ export async function triggerDeploy(
 
         // 409 Conflict: 并发部署冲突
         if (response.status === 409) {
-          throw new Error(`⚠️ 部署冲突: ${errorMsg}\n请等待当前部署完成后再试`);
+          throw new DeployError(`⚠️ 部署冲突: ${errorMsg}\n请等待当前部署完成后再试`);
         }
-
-        throw new Error(
-          `Deployment failed with ${response.status}: ${errorMsg}`
-        );
+        const message = `Deployment failed with ${response.status}: ${errorMsg}`;
+        if (response.status === 410) throw new DeployError(message);
+        throw new Error(message);
       }
 
-      const result = await handleStreamResponse(response, (id) => {
+      const responseId = response.headers.get("x-deployment-id");
+      if (deploymentId && responseId !== deploymentId) {
+        await response.body?.cancel();
+        throw new DeployError("Cannot confirm the identity of the resumed deployment");
+      }
+      deploymentId = responseId;
+      return await handleStreamResponse(response, (id) => {
         lastEventId = id;
       });
-
-      return result;
     } catch (error: any) {
-      // 如果是部署失败的错误（有 exitCode），直接抛出
-      if (error.message.includes("exit code")) {
+      if (error instanceof DeployError || !deploymentId) {
         throw error;
       }
 
       // 网络错误，尝试重连
-      if (lastEventId && retryCount < maxRetries) {
+      if (retryCount < maxRetries) {
         retryCount++;
         // 指数退避 + 随机抖动
         const baseDelay = Math.min(1000 * Math.pow(2, retryCount), 30000);
@@ -78,27 +83,15 @@ export async function triggerDeploy(
       }
 
       // 重试用尽，尝试查询状态
-      if (lastEventId) {
-        console.log(`\n📋 Checking deployment status...`);
-        try {
-          const status = await getDeployStatus(serverUrl, env, token);
-          if (status.lastResult) {
-            if (status.lastResult.success) {
-              console.log(`\n✅ Deployment completed successfully`);
-              return { success: true, ...status.lastResult };
-            } else {
-              throw new Error(
-                `Deployment failed with exit code ${status.lastResult.exitCode}`
-              );
-            }
-          }
-        } catch (statusError: any) {
-          console.error(`❌ Failed to get status:`, statusError.message);
+      console.log(`\n📋 Checking deployment status...`);
+      const status = await getDeployStatus(serverUrl, env, token, deploymentId);
+      if (status.deploymentId === deploymentId && status.lastResult) {
+        if (!status.lastResult.success) {
+          throw new DeployError(`Deployment failed with exit code ${status.lastResult.exitCode}`);
         }
+        return status.lastResult;
       }
-
-      console.error(`❌ Deployment trigger failed:`, error.message);
-      throw error;
+      throw new Error(`Cannot confirm deployment result: ${error.message}`);
     }
   }
 
@@ -111,13 +104,11 @@ export async function triggerDeploy(
 async function getDeployStatus(
   serverUrl: string,
   env: string,
-  token: string
+  token: string,
+  deploymentId: string
 ): Promise<any> {
-  const response = await fetch(`${serverUrl}/deploy/status?env=${env}`, {
-    method: "GET",
-    headers: {
-      Authorization: token,
-    },
+  const response = await fetch(`${serverUrl}/deploy/status?${new URLSearchParams({ env })}`, {
+    headers: { Authorization: token, "X-Deployment-ID": deploymentId },
   });
 
   if (!response.ok) {
@@ -141,57 +132,42 @@ async function handleStreamResponse(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: any = {};
+  let currentEvent = "";
+  let currentId = "";
 
   console.log(`\n📋 Deploy script output:`);
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    // 解析 SSE 事件
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || ""; // 保留未完成的行
-
-    let currentEvent = "";
-    let currentId = "";
-    for (const line of lines) {
-      if (line.startsWith("id: ")) {
-        currentId = line.slice(4);
-        if (onEventId) {
-          onEventId(currentId);
-        }
-      } else if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7);
-      } else if (line.startsWith("data: ")) {
-        const data = JSON.parse(line.slice(6));
-
-        if (currentEvent === "output") {
-          // 实时输出
-          process.stdout.write(data.data);
-        } else if (currentEvent === "done") {
-          result = data;
-        } else if (currentEvent === "error") {
-          result = data;
-          if (data.exitCode !== undefined && data.exitCode !== 0) {
-            throw new Error(
-              `Deployment failed with exit code ${data.exitCode}`
-            );
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) throw new Error("Deployment stream ended before a final event");
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop()!;
+      for (const line of lines) {
+        if (line === "") {
+          currentEvent = "";
+          currentId = "";
+        } else if (line.startsWith("id: ")) {
+          currentId = line.slice(4);
+        } else if (line.startsWith("event: ")) {
+          currentEvent = line.slice(7);
+        } else if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6));
+          if (currentEvent === "output") {
+            process.stdout.write(data.data);
+            if (currentId) onEventId?.(currentId);
+          } else if (currentEvent === "done" && data.success === true) {
+            return data;
+          } else if (currentEvent === "error") {
+            throw new DeployError(data.exitCode !== undefined
+              ? `Deployment failed with exit code ${data.exitCode}`
+              : data.error || "Deploy failed");
           }
-          // 如果没有 exitCode 但有错误，可能是续接时发现没有部署
-          if (data.error === "No deployment in progress") {
-            // 这不是真正的错误，只是没有正在进行的部署
-            console.log(`\n⚠️ ${data.error}`);
-            return result;
-          }
-          throw new Error(data.error || data.details || "Deploy failed");
         }
       }
     }
+  } finally {
+    await reader.cancel().catch(() => {});
   }
-
-  console.log(""); // 换行
-  return result;
 }

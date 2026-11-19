@@ -139,11 +139,12 @@ log:
   maxSize: 10 # MB
   maxBackups: 5
 
-# 上传与解压限制（容量单位：MB）
+# 上传、解压与部署冷却限制（容量单位：MB；deployCooldownSec 为秒）
 limits:
   chunkStorageMB: 10240 # 分片总配额，10 GiB
   chunkFileMB: 10240 # 单文件上限，不能超过总配额
   zipExtractMB: 2048 # ZIP 解压后总大小，2 GiB
+  deployCooldownSec: 30 # 部署结束后拒绝新部署的冷却秒数（0 关闭）
 
 # 环境配置
 environments:

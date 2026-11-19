@@ -3,11 +3,12 @@ import type { ServerLimitsConfig } from "../types";
 // YAML 使用 MB 便于人工配置，运行时统一换算成字节。
 const MB = 1024 * 1024;
 
-/** 服务端运行时使用的字节限额。 */
+/** 服务端运行时使用的限额。 */
 export interface ResolvedServerLimits {
   chunkStorageBytes: number;
   chunkFileBytes: number;
   zipExtractBytes: number;
+  deployCooldownMs: number;
 }
 
 function positiveInteger(
@@ -19,6 +20,20 @@ function positiveInteger(
   if (!Number.isSafeInteger(resolved) || resolved <= 0) {
     throw new Error(
       `Invalid config: limits.${field} must be a positive integer`
+    );
+  }
+  return resolved;
+}
+
+function nonNegativeInteger(
+  value: number | undefined,
+  fallback: number,
+  field: string
+): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 0) {
+    throw new Error(
+      `Invalid config: limits.${field} must be a non-negative integer`
     );
   }
   return resolved;
@@ -50,6 +65,11 @@ export function resolveServerLimits(
     2 * 1024,
     "zipExtractMB"
   );
+  const deployCooldownSec = nonNegativeInteger(
+    limits.deployCooldownSec,
+    30,
+    "deployCooldownSec"
+  );
 
   if (chunkFileMB > chunkStorageMB) {
     throw new Error(
@@ -60,10 +80,12 @@ export function resolveServerLimits(
   const chunkStorageBytes = chunkStorageMB * MB;
   const chunkFileBytes = chunkFileMB * MB;
   const zipExtractBytes = zipExtractMB * MB;
+  const deployCooldownMs = deployCooldownSec * 1000;
   if (
     !Number.isSafeInteger(chunkStorageBytes) ||
     !Number.isSafeInteger(chunkFileBytes) ||
-    !Number.isSafeInteger(zipExtractBytes)
+    !Number.isSafeInteger(zipExtractBytes) ||
+    !Number.isSafeInteger(deployCooldownMs)
   ) {
     throw new Error("Invalid config: limits values are too large");
   }
@@ -72,5 +94,6 @@ export function resolveServerLimits(
     chunkStorageBytes,
     chunkFileBytes,
     zipExtractBytes,
+    deployCooldownMs,
   };
 }

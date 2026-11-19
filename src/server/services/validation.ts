@@ -176,20 +176,23 @@ export async function verifyFileChecksumFromPath(
  * Step 2: 验证 Token 是否一致（使用环境级别或外层级别 Token）
  */
 export function validateRequest(
-  env: string | null,
+  env: unknown,
   token: string | null,
   config: ServerConfig
 ): { valid: boolean; error?: string; envConfig?: EnvironmentConfig } {
   // 检查环境参数
-  if (!env) {
+  if (env == null || env === "") {
     return { valid: false, error: "Missing environment parameter" };
+  }
+  if (typeof env !== "string" || !env.trim()) {
+    return { valid: false, error: "Invalid environment parameter" };
   }
 
   // Step 1: 检查环境是否存在
-  const envConfig = config.environments[env];
-  if (!envConfig) {
+  if (!Object.hasOwn(config.environments, env)) {
     return { valid: false, error: `Unknown environment: ${env}` };
   }
+  const envConfig = config.environments[env];
 
   // Step 2: 获取有效的 Token（优先使用环境级别，否则使用外层级别）
   const validToken = envConfig.token || config.token;

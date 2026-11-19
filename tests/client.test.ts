@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { loadConfig } from "../src/client/config/loader";
+import { triggerDeploy } from "../src/client/services/deploy";
 import { loadConfig as loadServerConfig } from "../src/server/config/loader";
 import { calculateChecksum, verifyChecksum } from "../src/utils/checksum";
 import { existsSync } from "fs";
@@ -64,6 +65,62 @@ describe("Client Utils Tests", () => {
       const exists = existsSync("./does-not-exist");
       expect(exists).toBe(false);
     });
+  });
+});
+
+describe("Deploy result confirmation", () => {
+  it("only accepts a fallback result for the deployment that lost its stream", async () => {
+    const fetchMock = spyOn(globalThis, "fetch");
+    const realTimeout = globalThis.setTimeout;
+    const timer = spyOn(globalThis, "setTimeout").mockImplementation((callback) => realTimeout(callback, 0));
+    try {
+      for (const statusId of ["original", "later"]) {
+        let requests = 0;
+        fetchMock.mockImplementation(async (url, init) => {
+          const headers = new Headers(init?.headers);
+          if (++requests === 1) {
+            return new Response('id: 1\nevent: output\ndata: {"data":""}\n\nid: 2\n', {
+              headers: { "X-Deployment-ID": "original" },
+            });
+          }
+          expect(headers.get("x-deployment-id")).toBe("original");
+          if (String(url).includes("/deploy/status?")) {
+            return Response.json({ deploymentId: statusId, lastResult: { success: true, exitCode: 0 } });
+          }
+          expect(headers.get("last-event-id")).toBe("1");
+          return new Response(null, { status: 503 });
+        });
+        const result = triggerDeploy("http://localhost", "test", "test-token");
+        if (statusId === "original") {
+          expect(await result).toMatchObject({ success: true });
+        } else {
+          await expect(result).rejects.toThrow("Cannot confirm deployment result");
+        }
+        expect(requests).toBe(5);
+      }
+    } finally {
+      timer.mockRestore();
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reads a split done event from an older server and rejects an incomplete stream", async () => {
+    const fetchMock = spyOn(globalThis, "fetch");
+    try {
+      const encoder = new TextEncoder();
+      fetchMock.mockResolvedValueOnce(new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode("id: 1\nevent: done\n"));
+          controller.enqueue(encoder.encode('data: {"success":true,"exitCode":0}\n\n'));
+          controller.close();
+        },
+      }))).mockResolvedValueOnce(new Response("id: 1\nevent: output\n"));
+      expect(await triggerDeploy("http://localhost", "test", "test-token")).toMatchObject({ success: true });
+      await expect(triggerDeploy("http://localhost", "test", "test-token")).rejects.toThrow("before a final event");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });
 

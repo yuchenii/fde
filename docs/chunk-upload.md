@@ -63,6 +63,8 @@ limits:
   zipExtractMB: 2048
 ```
 
+部署冷却见 `limits.deployCooldownSec`（README / [server-api](./server-api.md)）。
+
 单个分片固定限制为 1 MiB。ZIP 的 2 GiB 是 FDE 默认安全值，不是操作系统限制；ZIP 条目数量另有服务端固定安全上限。
 
 ## 上传流程

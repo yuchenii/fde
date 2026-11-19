@@ -1,7 +1,8 @@
-import type { ServerConfig } from "../types";
+import type { EnvironmentConfig, ServerConfig } from "../types";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { resolveServerLimits } from "../config/limits";
 import {
   hasValidToken,
   validateRequest,
@@ -17,11 +18,11 @@ import {
   startDeploy,
   addOutput,
   finishDeploy,
-  getOutputsFrom,
-  isDeploying,
   shouldRejectNewDeploy,
   getDeployStatus,
-  getLatestOutputId,
+  getStreamDeploy,
+  type DeployRun,
+  type OutputEntry,
 } from "../services/deployState";
 import { VERSION } from "@/version";
 import {
@@ -30,6 +31,15 @@ import {
   readRequestBody,
   RequestBodyError,
 } from "../utils/request";
+
+function rejectIfDeployBlocked(env: string, cooldownMs: number): Response | null {
+  const rejectCheck = shouldRejectNewDeploy(env, cooldownMs);
+  if (!rejectCheck.reject) {
+    return null;
+  }
+  console.log(`❌ ${rejectCheck.reason} for ${env}, rejecting request`);
+  return Response.json({ error: rejectCheck.reason }, { status: 409 });
+}
 
 let standardUploadActive = false;
 
@@ -190,17 +200,13 @@ export async function handleDeploy(
   try {
     // 获取环境参数
     const body = await readJsonBody<{ env: string; stream?: boolean }>(req);
-    const { env, stream } = body;
+    const { env, stream } = body ?? {};
 
     // 获取认证token和续接ID
     const token = req.headers.get("authorization");
     const lastEventId = req.headers.get("last-event-id");
 
-    const isReconnect = lastEventId !== null;
-    console.log(
-      `\n📨 Received deploy request for env: ${env || "undefined"}${stream ? " (stream mode)" : ""
-      }${isReconnect ? ` (reconnect from id: ${lastEventId})` : ""}`
-    );
+    const deploymentId = req.headers.get("x-deployment-id");
 
     // 验证请求
     const validation = validateRequest(env, token, config);
@@ -216,47 +222,58 @@ export async function handleDeploy(
       );
     }
 
-    // 流式模式
-    if (stream) {
-      // 检查是否是续接请求
-      if (isReconnect) {
-        const fromId = parseInt(lastEventId, 10) || 0;
-        return handleDeployResume(env!, fromId, config);
+    console.log(`\n📨 Received deploy request for env: ${env}`);
+    if (stream && (lastEventId !== null || deploymentId !== null)) {
+      const fromId = Number(lastEventId ?? 0);
+      if (!/^\d+$/.test(lastEventId ?? "0") || !Number.isSafeInteger(fromId)) {
+        return Response.json({ error: "Invalid Last-Event-ID" }, { status: 400 });
       }
-
-      // 检查是否有并发部署或冷却期（没有 Last-Event-ID 时检查）
-      const rejectCheck = shouldRejectNewDeploy(env!);
-      if (rejectCheck.reject) {
-        console.log(`❌ ${rejectCheck.reason} for ${env}, rejecting request`);
-        return Response.json({ error: rejectCheck.reason }, { status: 409 });
+      const run = getStreamDeploy(env);
+      if (
+        !run ||
+        (deploymentId !== null && deploymentId !== run.deploymentId) ||
+        (fromId !== 0 && (fromId < run.firstEventId || fromId >= run.nextId))
+      ) {
+        return Response.json({ error: "Deployment is no longer available" }, { status: 410 });
       }
-
-      // 新部署
-      return handleDeployStream(
-        env!,
-        { envConfig: validation.envConfig! },
-        config
-      );
+      return deployEventStream(env, run, fromId);
     }
 
-    // 非流式模式：原有逻辑
-    const deployResult = await executeDeployCommand(
-      validation.envConfig!.deployCommand,
-      validation.envConfig!.uploadPath,
-      config.configDir,
-      validation.envConfig!.env
-    );
+    const { deployCooldownMs } = resolveServerLimits(config.limits);
+    const blocked = rejectIfDeployBlocked(env, deployCooldownMs);
+    if (blocked) return blocked;
 
-    // 部署成功后检查并轮转日志文件
-    await rotateLogAfterDeploy(config);
+    const run = startDeploy(env, !!stream);
+    const envConfig = validation.envConfig!;
+    if (stream) {
+      const response = deployEventStream(env, run, 0);
+      void executeStreamDeploy(env, run, envConfig, config);
+      return response;
+    }
 
-    return Response.json({
-      success: true,
-      message: `Deployment to ${env} completed successfully`,
-      uploadPath: validation.envConfig!.uploadPath,
-      stdout: deployResult.stdout,
-      stderr: deployResult.stderr,
-    });
+    try {
+      const deployResult = await executeDeployCommand(
+        envConfig.deployCommand,
+        envConfig.uploadPath,
+        config.configDir,
+        envConfig.env
+      );
+      await rotateLogAfterDeploy(config);
+      finishDeploy(run, { success: true, exitCode: 0 });
+      return Response.json({
+        success: true,
+        message: `Deployment to ${env} completed successfully`,
+        uploadPath: envConfig.uploadPath,
+        stdout: deployResult.stdout,
+        stderr: deployResult.stderr,
+      });
+    } catch (error: any) {
+      finishDeploy(run, {
+        success: false,
+        exitCode: typeof error.code === "number" ? error.code : -1,
+      });
+      throw error;
+    }
   } catch (error: any) {
     console.error(`❌ Server error:`, error);
     if (error instanceof RequestBodyError) {
@@ -277,200 +294,75 @@ export async function handleDeploy(
 /**
  * 流式部署处理（新部署）
  */
-function handleDeployStream(
+async function executeStreamDeploy(
   env: string,
-  validation: {
-    envConfig: NonNullable<ReturnType<typeof validateRequest>["envConfig"]>;
-  },
+  run: DeployRun,
+  envConfig: EnvironmentConfig,
   config: ServerConfig
-): Response {
-  const encoder = new TextEncoder();
-
-  // 标记部署开始
-  startDeploy(env);
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      let isClosed = false;
-
-      const sendEvent = (event: string, data: any, id?: number) => {
-        if (isClosed) return;
-        try {
-          let message = "";
-          if (id !== undefined) {
-            message = `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(
-              data
-            )}\n\n`;
-          } else {
-            message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-          }
-          controller.enqueue(encoder.encode(message));
-        } catch {
-          isClosed = true;
-        }
-      };
-
-      try {
-        const result = await executeDeployCommandStream(
-          validation.envConfig.deployCommand,
-          validation.envConfig.uploadPath,
-          config.configDir,
-          (type, data) => {
-            // 添加到缓冲并获取ID
-            const id = addOutput(env, "output", { type, data });
-            sendEvent("output", { type, data }, id);
-          },
-          validation.envConfig.env
-        );
-
-        // 轮转日志
-        await rotateLogAfterDeploy(config);
-
-        if (result.code === 0) {
-          const doneData = {
-            success: true,
-            message: `Deployment to ${env} completed successfully`,
-            uploadPath: validation.envConfig.uploadPath,
-            exitCode: result.code,
-          };
-          const id = addOutput(env, "done", doneData);
-          sendEvent("done", doneData, id);
-          finishDeploy(env, { success: true, exitCode: 0 });
-        } else {
-          const errorData = {
-            error: "Deploy command failed",
-            exitCode: result.code,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          };
-          const id = addOutput(env, "error", errorData);
-          sendEvent("error", errorData, id);
-          finishDeploy(env, { success: false, exitCode: result.code });
-        }
-      } catch (error: any) {
-        console.error(`❌ Stream deploy error:`, error);
-        const errorData = {
-          error: "Deploy command failed",
-        };
-        const id = addOutput(env, "error", errorData);
-        sendEvent("error", errorData, id);
-        finishDeploy(env, { success: false, exitCode: -1 });
-      } finally {
-        if (!isClosed) {
-          try {
-            controller.close();
-          } catch {
-            // 忽略关闭错误
-          }
-        }
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+): Promise<void> {
+  try {
+    const { code, stdout, stderr } = await executeDeployCommandStream(
+      envConfig.deployCommand,
+      envConfig.uploadPath,
+      config.configDir,
+      (type, data) => addOutput(run, "output", { type, data }),
+      envConfig.env
+    );
+    await rotateLogAfterDeploy(config);
+    finishDeploy(run, { success: code === 0, exitCode: code });
+    if (code === 0) {
+      addOutput(run, "done", {
+        success: true, exitCode: code, uploadPath: envConfig.uploadPath,
+        message: `Deployment to ${env} completed successfully`,
+      });
+    } else {
+      addOutput(run, "error", { error: "Deploy command failed", exitCode: code, stdout, stderr });
+    }
+  } catch (error) {
+    console.error(`❌ Stream deploy error:`, error);
+    finishDeploy(run, { success: false, exitCode: -1 });
+    addOutput(run, "error", { error: "Deploy command failed", exitCode: -1 });
+  }
 }
 
 /**
  * 流式部署续接处理
  */
-function handleDeployResume(
-  env: string,
-  fromId: number,
-  config: ServerConfig
-): Response {
+function deployEventStream(env: string, run: DeployRun, fromId: number): Response {
   const encoder = new TextEncoder();
-
+  let send: (entry: OutputEntry) => void;
   const stream = new ReadableStream({
-    async start(controller) {
-      let isClosed = false;
-
-      const sendEvent = (event: string, data: any, id?: number) => {
-        if (isClosed) return;
+    start(controller) {
+      send = ({ id, event, data }) => {
         try {
-          let message = "";
-          if (id !== undefined) {
-            message = `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(
-              data
-            )}\n\n`;
-          } else {
-            message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-          }
+          const message = `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
           controller.enqueue(encoder.encode(message));
+          if (event !== "output") {
+            run.listeners.delete(send);
+            controller.close();
+          }
         } catch {
-          isClosed = true;
+          run.listeners.delete(send);
         }
       };
-
-      try {
-        // 检查部署状态
-        if (!isDeploying(env)) {
-          // 部署已完成，返回最终结果
-          const status = getDeployStatus(env);
-          if (status.lastResult) {
-            if (status.lastResult.success) {
-              sendEvent("done", {
-                success: true,
-                message: `Deployment to ${env} completed successfully`,
-                exitCode: status.lastResult.exitCode,
-              });
-            } else {
-              sendEvent("error", {
-                error: "Deploy command failed",
-                exitCode: status.lastResult.exitCode,
-              });
-            }
-          } else {
-            // 没有部署记录
-            sendEvent("error", {
-              error: "No deployment in progress",
-            });
-          }
-          return;
-        }
-
-        // 部署进行中，重放缓冲的输出
-        console.log(`🔄 Resuming SSE for env: ${env} from id: ${fromId}`);
-        const bufferedOutputs = getOutputsFrom(env, fromId);
-        for (const output of bufferedOutputs) {
-          sendEvent(output.event, output.data, output.id);
-        }
-
-        // 继续监听新输出（轮询方式）
-        let lastId = getLatestOutputId(env);
-        while (isDeploying(env) && !isClosed) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          const newOutputs = getOutputsFrom(env, lastId);
-          for (const output of newOutputs) {
-            sendEvent(output.event, output.data, output.id);
-            lastId = output.id;
-          }
-        }
-
-        // 部署完成，发送仍在缓冲中的最终消息
-        const finalOutputs = getOutputsFrom(env, lastId);
-        for (const output of finalOutputs) {
-          sendEvent(output.event, output.data, output.id);
-        }
-      } catch (error: any) {
-        console.error(`❌ SSE resume error:`, error);
-        sendEvent("error", {
-          error: "Resume failed",
+      if (run.lastResult) {
+        const { success, exitCode } = run.lastResult;
+        send({
+          id: run.nextId - 1,
+          event: success ? "done" : "error",
+          data: success
+            ? { success, exitCode, message: `Deployment to ${env} completed successfully` }
+            : { error: "Deploy command failed", exitCode },
         });
-      } finally {
-        if (!isClosed) {
-          try {
-            controller.close();
-          } catch {
-            // 忽略关闭错误
-          }
-        }
+        return;
       }
+      for (const entry of run.outputBuffer) {
+        if (entry.id > fromId) send(entry);
+      }
+      run.listeners.add(send);
+    },
+    cancel() {
+      run.listeners.delete(send);
     },
   });
 
@@ -479,6 +371,7 @@ function handleDeployResume(
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
+      "X-Deployment-ID": run.deploymentId,
     },
   });
 }
@@ -509,23 +402,11 @@ export async function handleDeployStatus(
       );
     }
 
-    const status = getDeployStatus(env!);
-
-    return Response.json({
-      env,
-      running: status.running,
-      startTime: status.startTime?.toISOString(),
-      bufferedCount: status.bufferedCount,
-      lastResult: status.lastResult
-        ? {
-          success: status.lastResult.success,
-          startTime: status.lastResult.startTime.toISOString(),
-          endTime: status.lastResult.endTime.toISOString(),
-          exitCode: status.lastResult.exitCode,
-          message: status.lastResult.message,
-        }
-        : null,
-    });
+    const status = getDeployStatus(env!, req.headers.get("x-deployment-id"));
+    if (!status) {
+      return Response.json({ error: "Deployment is no longer available" }, { status: 410 });
+    }
+    return Response.json({ env, ...status });
   } catch (error: any) {
     console.error(`❌ Deploy status error:`, error);
     return routeErrorResponse(error, "Failed to get deploy status");
@@ -585,10 +466,8 @@ export async function handleVerify(
 ): Promise<Response> {
   try {
     const body = await readJsonBody<{ env: string }>(req);
-    const { env } = body;
+    const { env } = body ?? {};
     const token = req.headers.get("authorization");
-
-    console.log(`\n🔐 Received verify request for env: ${env || "undefined"}`);
 
     // 验证请求
     const validation = validateRequest(env, token, config);

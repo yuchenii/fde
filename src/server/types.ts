@@ -20,11 +20,13 @@ export interface LogConfig {
   maxBackups?: number; // 保留备份数量，默认 5
 }
 
-/** 上传和 ZIP 解压限额，配置文件中的单位均为 MB。 */
+/** 上传、解压与部署冷却限额；容量字段单位为 MB。 */
 export interface ServerLimitsConfig {
   chunkStorageMB?: number; // 所有新布局分片任务的预留容量，默认 10240
   chunkFileMB?: number; // 单个分片上传文件上限，默认等于 chunkStorageMB
   zipExtractMB?: number; // ZIP 解压后总大小上限，默认 2048
+  /** 部署结束后拒绝新部署的冷却秒数，默认 30；设为 0 可关闭冷却 */
+  deployCooldownSec?: number;
 }
 
 /**

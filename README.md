@@ -58,6 +58,7 @@ limits:
   chunkStorageMB: 10240 # Total chunk storage (10 GiB)
   chunkFileMB: 10240 # Per-file chunk upload limit (10 GiB)
   zipExtractMB: 2048 # Maximum uncompressed ZIP size (2 GiB)
+  deployCooldownSec: 30 # Seconds to reject new deploys after the last finishes (0 disables)
 environments:
   prod:
     token: "<64-hex-token>" # Paste the generated token here
@@ -77,7 +78,7 @@ fde-server start -c server.yaml
 fde-server start -d -c server.yaml
 ```
 
-Resource limits are configured in `server.yaml`. Capacity values use MB; `chunkFileMB` defaults to `chunkStorageMB` and cannot exceed it.
+Resource limits are configured in `server.yaml`. Capacity values use MB; `chunkFileMB` defaults to `chunkStorageMB` and cannot exceed it. `deployCooldownSec` defaults to `30` and may be set to `0` to disable the post-deploy cooldown.
 
 ### 4. Deploy
 
@@ -180,6 +181,7 @@ fde-client --help
 | `limits.chunkStorageMB` | `number` | No | `10240` | Total reserved chunk storage in MB. |
 | `limits.chunkFileMB` | `number` | No | Same as chunk storage | Per-file chunk upload limit in MB. |
 | `limits.zipExtractMB` | `number` | No | `2048` | Maximum uncompressed ZIP size in MB. |
+| `limits.deployCooldownSec` | `number` | No | `30` | Seconds after a deploy finishes during which new deploys for that env are rejected (`0` disables). Was previously a hard-coded 5s stream-only cooldown. |
 
 **Environment Object (`environments.<name>`):**
 
