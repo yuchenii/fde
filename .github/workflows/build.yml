@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
@@ -33,9 +33,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nsis
 
       - name: Build Windows Installer
-        uses: joncloud/makensis-action@v4
-        with:
-          script-file: scripts/installer.nsi
+        run: bun run build:installer
 
       - name: Generate Checksums
         run: |
@@ -43,7 +41,7 @@ jobs:
           sha256sum * > SHA256SUMS.txt
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fde-binaries
           path: dist/*
@@ -51,7 +49,7 @@ jobs:
 
       - name: Build Changelog
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@v6
         with:
           configuration: ".github/changelog-configuration.json"
           mode: "COMMIT"
@@ -60,7 +58,7 @@ jobs:
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body: |
